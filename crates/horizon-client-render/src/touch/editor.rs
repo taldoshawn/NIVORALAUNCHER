@@ -133,7 +133,7 @@ impl TouchControls {
             side_drag: None,
             numeric_property: None,
             property_viewport: [1.0, 1.0],
-            selected: Some(Control::Move),
+            selected: self.visible(Control::Move).then_some(Control::Move),
             option: None,
             apply_all: false,
             original: self.settings.clone(),
