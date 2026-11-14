@@ -74,6 +74,33 @@ jobs:
           (cd dist && sha256sum --check SHA256SUMS.txt)
       - name: Package documentation and original examples with provenance
         run: python3 tools/package_android_docs.py --output dist --source-commit "$APK_COMMIT"
+      - name: Attach actual emulator UI captures
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PYCODE'
+          import json, os, re
+          from pathlib import Path
+          record = json.loads(Path('packaging/releases', os.environ['RELEASE_VERSION'], 'VALIDATION.json').read_text())
+          match = re.fullmatch(r'https://github.com/taldoshawn/pojav/actions/runs/([0-9]+)', record['workflow'])
+          assert match
+          Path('smoke-run-id.txt').write_text(match.group(1))
+          PYCODE
+          read -r smoke_run_id < smoke-run-id.txt || true
+          gh run download "$smoke_run_id" --repo "$GITHUB_REPOSITORY" --name android-startup-evidence --dir evidence
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          import json, os, zipfile
+          result = json.loads(Path('evidence/RESULT.json').read_text())
+          assert result['failure'] is None and result['startup_passed']
+          assert os.environ['APK_COMMIT'][:12] in result['apk']
+          with zipfile.ZipFile('dist/Pojav-Rust-Capturas-do-APK.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
+              for page in ('play', 'mods', 'resource-packs', 'shaders', 'installed', 'settings'):
+                  image = Path('evidence', f'ui-{page}.png')
+                  assert image.is_file()
+                  archive.write(image, image.name)
+              archive.write('evidence/RESULT.json', 'RESULT.json')
+          PYCODE
       - name: Upload only verified public files to the draft release
         env:
           GH_TOKEN: ${{ github.token }}

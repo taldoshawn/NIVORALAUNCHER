@@ -1,0 +1,58 @@
+{
+  "commit": "23bb9b08580b61b3cbbd645d9a7135481bb674ef",
+  "version": "0.1.0-alpha.3",
+  "apks": [
+    {
+      "commit": "23bb9b08580b61b3cbbd645d9a7135481bb674ef",
+      "abi": "arm64-v8a",
+      "package": "dev.taldoshawn.pojav",
+      "signing": "owner-persistent-key",
+      "game_target": "26.3",
+      "legacy_1_8_gameplay": false,
+      "device_tested": false,
+      "sha256": "ae13dd5249dd9fa76422a5e8940010d11cf007c1918db1b7217ac9a9e8e483b9",
+      "run": "https://github.com/taldoshawn/pojav/actions/runs/43622104821",
+      "file": "Pojav-Rust-0.1.0-alpha.3-arm64-v8a.apk",
+      "ci_sha256": "847cbfd4f528ae7f7df0ef0e96e3a93dda874980893d0308c21abe373a4778ed"
+    },
+    {
+      "commit": "23bb9b08580b61b3cbbd645d9a7135481bb674ef",
+      "abi": "armeabi-v7a",
+      "package": "dev.taldoshawn.pojav",
+      "signing": "owner-persistent-key",
+      "game_target": "26.3",
+      "legacy_1_8_gameplay": false,
+      "device_tested": false,
+      "sha256": "5bad386a2858ef36962be461315b545870ef4ef814d509d9ef8abd37400b737c",
+      "run": "https://github.com/taldoshawn/pojav/actions/runs/43622104821",
+      "file": "Pojav-Rust-0.1.0-alpha.3-armeabi-v7a.apk",
+      "ci_sha256": "78b894411bab31eaac4426620539c7ffe3d1047a17cd91e87dd9ebba1d55e6d3"
+    },
+    {
+      "commit": "23bb9b08580b61b3cbbd645d9a7135481bb674ef",
+      "abi": "x86",
+      "package": "dev.taldoshawn.pojav",
+      "signing": "owner-persistent-key",
+      "game_target": "26.3",
+      "legacy_1_8_gameplay": false,
+      "device_tested": false,
+      "sha256": "01bbfdba6e0ee19c6ba3c90c2204380b186d2c6992b13e2bc882384ff2fc8210",
+      "run": "https://github.com/taldoshawn/pojav/actions/runs/43622104821",
+      "file": "Pojav-Rust-0.1.0-alpha.3-x86.apk",
+      "ci_sha256": "6cc0528a8c9bc775dae3637db794d5c4745071dfb02e2f932b874cd8bd1eea8d"
+    },
+    {
+      "commit": "23bb9b08580b61b3cbbd645d9a7135481bb674ef",
+      "abi": "x86_64",
+      "package": "dev.taldoshawn.pojav",
+      "signing": "owner-persistent-key",
+      "game_target": "26.3",
+      "legacy_1_8_gameplay": false,
+      "device_tested": false,
+      "sha256": "6613a3d70c117f885eeefe7085ae106f277a3f76fbf9407045d9a08d9087740d",
+      "run": "https://github.com/taldoshawn/pojav/actions/runs/43622104821",
+      "file": "Pojav-Rust-0.1.0-alpha.3-x86_64.apk",
+      "ci_sha256": "5704d781cf14d74b3a5380f2009e612e4be345b78bb4ccb9ea36b1d8d8cbc840"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+ae13dd5249dd9fa76422a5e8940010d11cf007c1918db1b7217ac9a9e8e483b9  Pojav-Rust-0.1.0-alpha.3-arm64-v8a.apk
+5bad386a2858ef36962be461315b545870ef4ef814d509d9ef8abd37400b737c  Pojav-Rust-0.1.0-alpha.3-armeabi-v7a.apk
+01bbfdba6e0ee19c6ba3c90c2204380b186d2c6992b13e2bc882384ff2fc8210  Pojav-Rust-0.1.0-alpha.3-x86.apk
+6613a3d70c117f885eeefe7085ae106f277a3f76fbf9407045d9a08d9087740d  Pojav-Rust-0.1.0-alpha.3-x86_64.apk
