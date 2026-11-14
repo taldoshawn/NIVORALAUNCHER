@@ -5,20 +5,33 @@ O motor do jogo executa em Rust, sem uma JVM executando Minecraft no celular. A 
 
 ## APK
 
-Baixe os APKs assinados na [release experimental](https://github.com/taldoshawn/pojav/releases/tag/v0.1.0-alpha.1). Os builds intermediários ficam em **Actions → Android APK → Artifacts**; eles usam outro certificado e não substituem a release por atualização direta.
+Baixe os APKs assinados na [release experimental](https://github.com/taldoshawn/pojav/releases/tag/v0.1.0-alpha.3). Os builds intermediários ficam em **Actions → Android APK → Artifacts**; eles usam outro certificado e não substituem a release por atualização direta.
 ARM64 é a arquitetura dos celulares atuais. As variantes ARMv7 e x86 de 32 bits são experimentais.
 
 - ARM64 / x86_64: Android 9 (API 28) ou superior.
 - ARMv7 / x86: Android 8.1 (API 27) ou superior.
 - GPU com OpenGL ES 3 ou Vulkan compatível; memória e drivers também limitam o funcionamento.
-- Na primeira abertura, toque em **Download Minecraft 26.3**; depois do download verificado, toque em **Play Minecraft 26.3**.
+- Na primeira abertura, toque em **Instalar** para obter os recursos; depois, use **Jogar**. A seta ao lado do botão permite selecionar **1.8.9** para multiplayer de protocolo 47 ou **26.3**. Os mundos locais permanecem na versão do motor moderno.
 - Servidores autenticados precisam de uma conta que possua Minecraft Java.
 
 ## Compatibilidade atual
 
-O backend de jogo existente tem como alvo **26.3, protocolo 777**. A nova camada de rede **1.8–1.8.9, protocolo 47**, está integrada ao jogo nos builds de desenvolvimento, com seletor de versão, mas continua experimental e aguarda validação de gameplay no APK. Não há suporte universal a versões, servidores ou aparelhos, nem promessa de FPS.
+O motor existente tem como alvo **26.3, protocolo 777**. A camada de rede
+**1.8–1.8.9, protocolo 47**, está integrada ao jogo e é experimental.
+O [teste do APK nº 21](https://github.com/taldoshawn/pojav/actions/runs/43623654873)
+instalou a variante x86_64 no emulador Android 15, abriu as seis páginas principais,
+importou um resource pack da pasta externa e confirmou movimento, quebra,
+colocação e um ataque contra outro cliente de teste em um servidor Cuberite local.
+Isso não comprova combate completo, servidores públicos, desempenho em um celular
+físico nem compatibilidade universal. Forge, OptiFine e singleplayer 1.8.9 não
+estão implementados.
 
-O APK x86_64 foi instalado e abriu a interface no emulador Android 15 ([teste](https://github.com/taldoshawn/pojav/actions/runs/43307924129)). Isso não mede FPS em celulares nem comprova multiplayer em servidor real. A preparação do APK e a compatibilidade de jogo são verificações distintas. Consulte [o estado do protocolo legado](docs/legacy-protocol.md) e [a compilação deste fork](docs/pojav-build.md).
+A release inclui [documentação e exemplos](https://github.com/taldoshawn/pojav/releases/download/v0.1.0-alpha.3/Pojav-Rust-Documentacao-e-Exemplos.zip)
+e [capturas reais do APK](https://github.com/taldoshawn/pojav/releases/download/v0.1.0-alpha.3/Pojav-Rust-Capturas-do-APK.zip).
+Consulte as [pastas de conteúdo](docs/android-content-folders.md),
+a [documentação de desenvolvimento](docs/pojav-development.md),
+o [estado do protocolo legado](docs/legacy-protocol.md) e a
+[compilação deste fork](docs/pojav-build.md).
 
 ## Origem e licenças
 
