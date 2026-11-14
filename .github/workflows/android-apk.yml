@@ -103,6 +103,10 @@ jobs:
           /tmp/pojav-content-storage-tests
       - name: Prepare verified private engine inputs
         run: python3 tools/android_prepare.py --java-home "$JAVA_HOME_25_X64"
+      - name: Resolve all protocol 47 block states against the packaged registry
+        run: |
+          HORIZON_LEGACY_FACTS="$GITHUB_WORKSPACE/.local/horizon-client/26.3/facts.json" \
+            cargo test -p horizon-protocol --test legacy_registry --locked -- --ignored
       - name: Verify touch controls on the host
         if: matrix.abi == 'arm64-v8a'
         run: |
@@ -110,6 +114,8 @@ jobs:
           sudo apt-get install -y libasound2-dev libudev-dev
           CARGO_PROFILE_TEST_DEBUG=0 cargo test -p horizon-client-render --lib touch::custom::tests --locked
           CARGO_PROFILE_TEST_DEBUG=0 cargo test -p horizon-client-render --lib touch::property_input::tests --locked
+          CARGO_PROFILE_TEST_DEBUG=0 cargo test -p horizon-client --lib net::tests::legacy_login_rejection_is_readable_and_does_not_trigger_reconnect --locked
+          CARGO_PROFILE_TEST_DEBUG=0 cargo test -p horizon-client --lib multiplayer::tests::screens_lay_out_on_whole_gui_pixels_at_any_window_size --locked
       - name: Restore this fork's signing identity
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}

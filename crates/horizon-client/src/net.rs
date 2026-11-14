@@ -478,7 +478,7 @@ impl Reason {
     fn component(reason_json: &str, lang: &Language) -> Self {
         match serde_json::from_str::<serde_json::Value>(reason_json) {
             Ok(v) => Self {
-                text: json_text(&v, lang),
+                text: horizon_protocol::text::disconnect_json(&v, lang),
                 key: v["translate"].as_str().map(str::to_owned),
             },
             Err(_) => Self::plain(reason_json),
@@ -956,40 +956,7 @@ fn brand() -> Vec<u8> {
 
 /// Flatten a JSON chat component (login disconnects are JSON).
 pub fn json_text(v: &serde_json::Value, lang: &Language) -> String {
-    match v {
-        serde_json::Value::String(s) => s.clone(),
-        serde_json::Value::Array(a) => a.iter().map(|e| json_text(e, lang)).collect(),
-        serde_json::Value::Object(o) => {
-            let mut out = if let Some(t) = o.get("text").and_then(|t| t.as_str()) {
-                t.to_owned()
-            } else if let Some(key) = o.get("translate").and_then(|t| t.as_str()) {
-                let args: Vec<String> = o
-                    .get("with")
-                    .and_then(|w| w.as_array())
-                    .map(|a| a.iter().map(|e| json_text(e, lang)).collect())
-                    .unwrap_or_default();
-                let pattern = lang
-                    .get(key)
-                    .cloned()
-                    .or_else(|| {
-                        o.get("fallback")
-                            .and_then(|f| f.as_str())
-                            .map(str::to_owned)
-                    })
-                    .unwrap_or_else(|| key.to_owned());
-                horizon_protocol::text::format_java(&pattern, &args)
-            } else {
-                String::new()
-            };
-            if let Some(extra) = o.get("extra").and_then(|e| e.as_array()) {
-                for e in extra {
-                    out.push_str(&json_text(e, lang));
-                }
-            }
-            out
-        }
-        other => other.to_string(),
-    }
+    horizon_protocol::text::json_plain(v, lang)
 }
 
 /// The language a session resolves server-sent components with: the selected
@@ -1137,6 +1104,60 @@ fn continues_after_failed_join(lan: bool, signed_in: bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_login_rejection_is_readable_and_does_not_trigger_reconnect() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let session = Session::connect_legacy(
+            &format!("localhost:{port}"),
+            "Probe",
+            None,
+            cfg::ClientInformation::new(8),
+            Arc::new(Language::new()),
+            PathBuf::new(),
+        );
+        let (stream, _) = listener.accept().unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let mut server = Connection::from_stream(stream).unwrap();
+        let (id, body) = server.recv().unwrap();
+        let handshake::Serverbound::Intention(packet) =
+            handshake::Serverbound::decode(id, &body).unwrap()
+        else {
+            panic!("expected legacy login handshake");
+        };
+        assert_eq!(packet.protocol, 47);
+        assert_eq!(server.recv().unwrap().0, 0);
+        let mut kick = horizon_protocol::buf::Writer::new();
+        kick.varint(0);
+        kick.string(r#"{"text":"MUSH\nValide sua conexão. ","extra":[{"text":"Clique aqui.","clickEvent":{"action":"open_url","value":"https://mush.com.br/validar"}}]}"#);
+        server.send(&kick.data).unwrap();
+        loop {
+            match session.events.recv_timeout(Duration::from_secs(5)).unwrap() {
+                Event::Disconnected {
+                    reason,
+                    key,
+                    from_server,
+                } => {
+                    assert_eq!(
+                        reason,
+                        "MUSH\nValide sua conexão. Clique aqui.\nhttps://mush.com.br/validar"
+                    );
+                    assert!(from_server);
+                    assert!(!crate::reconnect::allowed(
+                        &reason,
+                        key.as_deref(),
+                        from_server
+                    ));
+                    break;
+                }
+                Event::Status(_) => {}
+                _ => panic!("a rejected login must not join play"),
+            }
+        }
+    }
 
     #[test]
     fn direct_login_keeps_the_hostname_in_the_handshake() {

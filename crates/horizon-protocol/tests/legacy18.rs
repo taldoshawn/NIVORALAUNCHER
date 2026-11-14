@@ -30,6 +30,43 @@ fn loopback() -> (Connection, Connection) {
     (client, server)
 }
 
+#[test]
+fn login_rejection_preserves_the_component_with_and_without_compression() {
+    let json = r#"{"text":"Valide sua conexão","extra":[{"text":"Mush","clickEvent":{"action":"open_url","value":"https://mush.com.br/validar"}}]}"#;
+    for threshold in [None, Some(0), Some(256)] {
+        let (client, mut server) = loopback();
+        let worker = std::thread::spawn(move || {
+            assert_hello(&mut server);
+            if let Some(threshold) = threshold {
+                let mut compression = Writer::new();
+                compression.varint(3);
+                compression.varint(threshold);
+                server.send(&compression.data).unwrap();
+                server.set_compression(threshold);
+            }
+            let mut disconnect = Writer::new();
+            disconnect.varint(0);
+            disconnect.string(json);
+            server.send(&disconnect.data).unwrap();
+            assert!(server.recv().unwrap_err().is_end_of_stream());
+        });
+        let outcome = legacy18::login_outcome(
+            client,
+            "localhost",
+            25565,
+            "Alex",
+            Duration::from_secs(5),
+            |_| panic!("no authentication requested"),
+        )
+        .unwrap();
+        match outcome {
+            legacy18::LoginOutcome::Disconnected(reason) => assert_eq!(reason, json),
+            legacy18::LoginOutcome::Joined(..) => panic!("a rejection must not enter play"),
+        }
+        worker.join().unwrap();
+    }
+}
+
 fn success() -> Vec<u8> {
     let mut bytes = vec![2, 36];
     bytes.extend_from_slice(b"00112233-4455-6677-8899-aabbccddeeff");

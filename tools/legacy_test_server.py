@@ -79,6 +79,11 @@ function OnSpawn(Player)
   test_world = Player:GetWorld()
   Player:GetInventory():SetHotbarSlot(0, cItem(1, 64))
   Player:GetWorld():SetBlock(0, 65, 3, 1, 0)
+  -- Exercise states missing from the old flat-grass smoke world: bark, leaves,
+  -- spawners, portals, melons and skulls previously disconnected the renderer.
+  for i, block in ipairs({{17,12},{18,0},{18,4},{52,0},{90,2},{103,0},{144,1},{144,2},{161,0},{161,5},{162,13}}) do
+    Player:GetWorld():SetBlock(6 + (i - 1) % 4, 65, math.floor((i - 1) / 4), block[1], block[2])
+  end
   return false
 end
 function OnMove(Player, Old, New)

@@ -45,7 +45,25 @@ impl Game<'_> {
             return Ok(value);
         }
         let descriptor = horizon_world::datafix::legacy_block_state(state)?;
-        let value = self.pack.assets.registry.resolve(&descriptor)?.0;
+        let value = self
+            .pack
+            .assets
+            .registry
+            .resolve(&descriptor)
+            .map_err(|error| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "legacy block {:#05x} ({}/{}), {} {:?}: {error}",
+                        state,
+                        state >> 4,
+                        state & 15,
+                        descriptor.name,
+                        descriptor.properties
+                    ),
+                )
+            })?
+            .0;
         if let Some(remote) = self.remote.as_mut() {
             remote.legacy_blocks[usize::from(state)] = Some(value);
         }

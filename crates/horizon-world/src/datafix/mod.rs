@@ -389,11 +389,54 @@ mod tests;
 /// Callers should cache results; upgrades must not run for every rendered block.
 pub fn legacy_block_state(state: u16) -> std::io::Result<crate::chunk::BlockState> {
     if state > 4095 {
-        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData,
-            "legacy block state is outside the vanilla flattening table"));
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "legacy block state is outside the vanilla flattening table",
+        ));
     }
     let mut tag = block_state_data::get_tag(i32::from(state));
-    update(Ty::BlockState, &mut tag, 1519, CURRENT);
+    // The numeric table is the output of the *1451* flattening fix, not
+    // released 1.13 (1519). Starting at 1519 skips the spawner/portal/melon/
+    // bark renames, leaving names that do not exist in the runtime registry.
+    // LeavesFix normally runs over a whole saved chunk; a network state has
+    // no such container, so convert its old leaf flags here.
+    if matches!(state >> 4, 18 | 161) {
+        let persistent = dynamic::as_str(tag.get("Properties").and_then(|p| p.get("decayable")))
+            .as_deref()
+            == Some("false");
+        dynamic::set(
+            &mut tag,
+            "Properties",
+            Tag::compound([
+                (
+                    "persistent",
+                    string(if persistent { "true" } else { "false" }),
+                ),
+                ("distance", string("7")),
+            ]),
+        );
+    }
+    // Skull type/rotation arrive in a separate block-entity packet. The table
+    // deliberately contains FILTER_ME placeholders for ChunkPalettedStorageFix
+    // to replace. A numeric state alone uses a skeleton skull with the correct
+    // attachment; never pass a placeholder to the renderer registry. Applying
+    // block-entity skull types, rotations and player skins remains separate work.
+    if state >> 4 == 144 {
+        let facing = dynamic::as_str(tag.get("Properties").and_then(|p| p.get("facing")))
+            .unwrap_or_else(|| "up".into());
+        tag = if matches!(facing.as_str(), "north" | "south" | "west" | "east") {
+            Tag::compound([
+                ("Name", string("minecraft:skeleton_wall_skull")),
+                ("Properties", Tag::compound([("facing", string(&facing))])),
+            ])
+        } else {
+            Tag::compound([
+                ("Name", string("minecraft:skeleton_skull")),
+                ("Properties", Tag::compound([("rotation", string("0"))])),
+            ])
+        };
+    }
+    update(Ty::BlockState, &mut tag, 1451, CURRENT);
     crate::chunk::BlockState::from_nbt(&tag)
 }
 
@@ -402,12 +445,70 @@ mod legacy_network_states {
     use super::*;
     #[test]
     fn numeric_states_resolve_through_flattening_and_later_renames() {
-        for (state, name) in [(0,"minecraft:air"), (16,"minecraft:stone"),
-            (32,"minecraft:grass_block"), (83,"minecraft:jungle_planks"),
-            (560,"minecraft:white_wool"), (575,"minecraft:black_wool")] {
+        for (state, name) in [
+            (0, "minecraft:air"),
+            (16, "minecraft:stone"),
+            (32, "minecraft:grass_block"),
+            (83, "minecraft:jungle_planks"),
+            (560, "minecraft:white_wool"),
+            (575, "minecraft:black_wool"),
+        ] {
             assert_eq!(legacy_block_state(state).unwrap().name, name);
         }
         assert!(legacy_block_state(65535).is_err());
+    }
+
+    #[test]
+    fn network_states_include_pre_release_renames_and_chunk_only_leaf_conversion() {
+        for (state, name) in [
+            (17 << 4 | 12, "minecraft:oak_wood"),
+            (52 << 4, "minecraft:spawner"),
+            (90 << 4 | 2, "minecraft:nether_portal"),
+            (103 << 4, "minecraft:melon"),
+            (162 << 4 | 13, "minecraft:dark_oak_wood"),
+        ] {
+            assert_eq!(legacy_block_state(state).unwrap().name, name);
+        }
+        for block in [18, 161] {
+            for metadata in 0..16 {
+                let leaf = legacy_block_state(block << 4 | metadata).unwrap();
+                assert!(!leaf.properties.contains_key("check_decay"));
+                assert!(!leaf.properties.contains_key("decayable"));
+                assert_eq!(
+                    leaf.properties.get("persistent").map(|v| v.as_str()),
+                    Some(if metadata & 4 != 0 && (block == 18 || metadata & 3 < 2) {
+                        "true"
+                    } else {
+                        "false"
+                    })
+                );
+                assert_eq!(
+                    leaf.properties.get("distance").map(|v| v.as_str()),
+                    Some("7")
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn skulls_never_expose_flattening_placeholders_to_the_network_renderer() {
+        for (metadata, name, property, value) in [
+            (1, "minecraft:skeleton_skull", "rotation", "0"),
+            (2, "minecraft:skeleton_wall_skull", "facing", "north"),
+            (3, "minecraft:skeleton_wall_skull", "facing", "south"),
+            (4, "minecraft:skeleton_wall_skull", "facing", "west"),
+            (5, "minecraft:skeleton_wall_skull", "facing", "east"),
+        ] {
+            for flag in [0, 8] {
+                let skull = legacy_block_state(144 << 4 | metadata | flag).unwrap();
+                assert_eq!(skull.name, name);
+                assert_eq!(
+                    skull.properties.get(property).map(|v| v.as_str()),
+                    Some(value)
+                );
+                assert!(!skull.properties.contains_key("nodrop"));
+            }
+        }
     }
 }
 
@@ -417,6 +518,9 @@ pub fn legacy_biome(id: u8) -> &'static str {
     NAMES[usize::from(id)].get_or_init(|| {
         let mut tag = Tag::String(fixes_cliffs::biome_by_id(i32::from(id)).into());
         update(Ty::Biome, &mut tag, 2730, CURRENT);
-        match tag { Tag::String(name) => name.to_string_lossy(), _ => "minecraft:plains".into() }
+        match tag {
+            Tag::String(name) => name.to_string_lossy(),
+            _ => "minecraft:plains".into(),
+        }
     })
 }

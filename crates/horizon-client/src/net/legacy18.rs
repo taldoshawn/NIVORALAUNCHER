@@ -20,19 +20,24 @@ pub(super) fn run(
     let (connection, host, port) =
         connect_tcp(&host, port, false, READ_TIMEOUT).map_err(Reason::plain)?;
     *counters.lock().unwrap() = Some(connection.reader.counters.clone());
-    let (mut connection, profile) =
-        legacy18::login(connection, &host, port, name, READ_TIMEOUT, |hash| {
-            let account = auth.ok_or_else(|| {
-                horizon_protocol::Error::new("This server requires a signed-in Minecraft account")
-            })?;
-            crate::auth::join_server(account, hash).map_err(|e| {
-                horizon_protocol::Error::new(match e.reason() {
-                    Ok(key) => tr(lang, key),
-                    Err(message) => message.to_owned(),
-                })
+    let outcome = legacy18::login_outcome(connection, &host, port, name, READ_TIMEOUT, |hash| {
+        let account = auth.ok_or_else(|| {
+            horizon_protocol::Error::new("This server requires a signed-in Minecraft account")
+        })?;
+        crate::auth::join_server(account, hash).map_err(|e| {
+            horizon_protocol::Error::new(match e.reason() {
+                Ok(key) => tr(lang, key),
+                Err(message) => message.to_owned(),
             })
         })
-        .map_err(|e| Reason::plain(e.to_string()))?;
+    })
+    .map_err(|e| Reason::plain(connection_lost(e, lang)))?;
+    let (mut connection, profile) = match outcome {
+        legacy18::LoginOutcome::Joined(connection, profile) => (connection, profile),
+        legacy18::LoginOutcome::Disconnected(reason) => {
+            return Ok(Reason::component(&reason, lang));
+        }
+    };
     let mut brand = horizon_protocol::buf::Writer::new();
     brand.varint(0x17);
     brand.string("MC|Brand");

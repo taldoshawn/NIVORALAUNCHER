@@ -54,7 +54,7 @@ try:
         fixture = Path('launcher-test-profile.json')
         fixture.write_text(json.dumps({'name': 'LegacyAndroid' if server == 'legacy18' else 'PRust' + os.environ.get('GITHUB_RUN_ID', 'Probe')[-8:],
                                       'server': '10.0.2.2:25565' if server == 'legacy18' else 'jogar.mush.com.br',
-                                      'legacy18': server == 'legacy18'}))
+                                      'legacy18': True}))
         adb('push', str(fixture), data + '/files/android-launcher.json')
         adb('shell', 'chown', uid + ':' + uid, data + '/files/android-launcher.json')
         adb('shell', 'chmod', '600', data + '/files/android-launcher.json')

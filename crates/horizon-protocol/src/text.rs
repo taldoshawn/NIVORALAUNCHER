@@ -7,6 +7,96 @@ use std::collections::HashMap;
 /// A language table: translation key -> pattern.
 pub type Language = HashMap<String, String>;
 
+/// Flatten a JSON component, used by legacy chat and login disconnects.
+pub fn json_plain(value: &serde_json::Value, lang: &Language) -> String {
+    fn append(value: &serde_json::Value, lang: &Language, depth: usize) -> String {
+        if depth > 32 {
+            return String::new();
+        }
+        match value {
+            serde_json::Value::String(s) => s.clone(),
+            serde_json::Value::Array(a) => a.iter().map(|v| append(v, lang, depth + 1)).collect(),
+            serde_json::Value::Object(o) => {
+                let mut out = if let Some(text) = o.get("text").and_then(|v| v.as_str()) {
+                    text.to_owned()
+                } else if let Some(key) = o.get("translate").and_then(|v| v.as_str()) {
+                    let args: Vec<String> = o
+                        .get("with")
+                        .and_then(|v| v.as_array())
+                        .map(|a| a.iter().map(|v| append(v, lang, depth + 1)).collect())
+                        .unwrap_or_default();
+                    let pattern = lang
+                        .get(key)
+                        .map(String::as_str)
+                        .or_else(|| o.get("fallback").and_then(|v| v.as_str()))
+                        .unwrap_or(key);
+                    format_java(pattern, &args)
+                } else {
+                    String::new()
+                };
+                if let Some(extra) = o.get("extra").and_then(|v| v.as_array()) {
+                    for child in extra {
+                        out.push_str(&append(child, lang, depth + 1));
+                    }
+                }
+                out
+            }
+            other => other.to_string(),
+        }
+    }
+    append(value, lang, 0)
+}
+
+/// Disconnect screens currently display plain text. Include HTTP links whose
+/// labels hide their destination, so legitimate server validation instructions
+/// remain usable. This never opens a browser or executes a server command.
+pub fn disconnect_json(value: &serde_json::Value, lang: &Language) -> String {
+    fn links(value: &serde_json::Value, urls: &mut Vec<String>, depth: usize) {
+        if depth > 32 || urls.len() >= 32 {
+            return;
+        }
+        if let Some(a) = value.as_array() {
+            for child in a {
+                links(child, urls, depth + 1);
+            }
+        }
+        if let Some(o) = value.as_object() {
+            let event = o.get("clickEvent").or_else(|| o.get("click_event"));
+            if let Some(event) = event
+                && event.get("action").and_then(|v| v.as_str()) == Some("open_url")
+                && let Some(url) = event
+                    .get("value")
+                    .or_else(|| event.get("url"))
+                    .and_then(|v| v.as_str())
+                && (url.starts_with("https://") || url.starts_with("http://"))
+                && !url.chars().any(char::is_control)
+                && !urls.iter().any(|previous| previous == url)
+            {
+                urls.push(url.to_owned());
+            }
+            for key in ["extra", "with"] {
+                if let Some(child) = o.get(key) {
+                    links(child, urls, depth + 1);
+                }
+            }
+        }
+    }
+    let mut out = json_plain(value, lang);
+    let mut urls = Vec::new();
+    links(value, &mut urls, 0);
+    for url in urls {
+        let destination = url
+            .strip_prefix("https://")
+            .or_else(|| url.strip_prefix("http://"))
+            .unwrap();
+        if !out.contains(destination) {
+            out.push('\n');
+            out.push_str(&url);
+        }
+    }
+    out
+}
+
 fn string(tag: &Tag) -> Option<String> {
     match tag {
         Tag::String(s) => Some(s.to_string_lossy()),
@@ -146,6 +236,41 @@ pub fn translatable(key: &str, args: &[&str]) -> Tag {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn disconnect_shows_server_instructions_and_hidden_validation_link() {
+        let component = serde_json::json!({"text":"", "extra":[
+            {"bold":true,"color":"aqua","text":"MUSH\n\n"},
+            {"text":"Olá!\nPor segurança precisamos validar sua conexão.\n"},
+            {"text":"Clique aqui e digite seu nick.","clickEvent":{
+                "action":"open_url","value":"https://mush.com.br/validar"}},
+            {"text":"","clickEvent":{"action":"run_command","value":"/login secret"}}
+        ]});
+        assert_eq!(
+            disconnect_json(&component, &Language::new()),
+            "MUSH\n\nOlá!\nPor segurança precisamos validar sua conexão.\nClique aqui e digite seu nick.\nhttps://mush.com.br/validar"
+        );
+    }
+
+    #[test]
+    fn disconnect_resolves_translation_without_duplicating_visible_urls() {
+        let lang = Language::from([("disconnect.test".into(), "Valide %s".into())]);
+        let component = serde_json::json!({"translate":"disconnect.test","with":[
+            {"text":"mush.com.br/validar","clickEvent":{
+                "action":"open_url","value":"https://mush.com.br/validar"}}
+        ]});
+        assert_eq!(
+            disconnect_json(&component, &lang),
+            "Valide mush.com.br/validar"
+        );
+        assert_eq!(
+            json_plain(
+                &serde_json::json!(["A",{"text":"B","extra":[{"text":"C"}]}]),
+                &lang
+            ),
+            "ABC"
+        );
+    }
 
     #[test]
     fn formats_like_translatable_contents() {

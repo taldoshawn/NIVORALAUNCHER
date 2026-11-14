@@ -784,7 +784,7 @@ impl Screen {
             Self::Disconnected { retry, .. } => {
                 let mut v = vec![b(
                     half(w) - 100.0,
-                    half(h) + 30.0,
+                    h.floor() - 52.0,
                     200.0,
                     &crate::lang::get_or("gui.toMenu", "Back to Server List"),
                     true,
@@ -793,7 +793,7 @@ impl Screen {
                 if retry.is_some() {
                     v.push(b(
                         half(w) - 100.0,
-                        half(h) + 54.0,
+                        h.floor() - 28.0,
                         200.0,
                         &crate::lang::get_or(
                             "horizon.multiplayer.cancel_reconnecting",
@@ -1349,18 +1349,21 @@ impl Screen {
                 );
             }
             Self::Disconnected { reason, retry } => {
+                let lines = wrap(reason, (w - 32.0).clamp(1.0, 300.0), atlas);
+                let body_height = lines.len() as f32 * 9.0;
+                let top = ((h - 104.0 - body_height) * 0.5).floor().max(8.0);
                 centered(
                     batch,
                     &crate::lang::get_or("disconnect.lost", "Connection Lost"),
-                    half(h) - 40.0,
+                    top,
                     rgba(170, 170, 170, 255),
                 );
-                for (i, line) in wrap(reason, 300.0, atlas).iter().enumerate() {
-                    centered(batch, line, half(h) - 16.0 + i as f32 * 9.0, u32::MAX);
+                for (i, line) in lines.iter().enumerate() {
+                    centered(batch, line, top + 24.0 + i as f32 * 9.0, u32::MAX);
                 }
                 if let Some(r) = retry {
                     let text = r.text(std::time::Instant::now());
-                    centered(batch, &text, half(h) + 16.0, rgba(170, 170, 170, 255));
+                    centered(batch, &text, h.floor() - 68.0, rgba(170, 170, 170, 255));
                 }
             }
         }
@@ -1970,7 +1973,7 @@ mod tests {
             reason: String::new(),
             retry: None,
         };
-        assert_eq!(at(&lost, 427.0, 253.0), [(113.0, 156.0)]);
+        assert_eq!(at(&lost, 427.0, 253.0), [(113.0, 201.0)]);
         // centeredText: `width / 2 - font.width(text) / 2`.
         assert_eq!(centered_x(427.0, 85.0), 171.0);
         assert_eq!(centered_x(320.0, 84.0), 118.0);

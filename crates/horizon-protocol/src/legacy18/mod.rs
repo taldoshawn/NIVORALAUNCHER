@@ -29,6 +29,13 @@ pub struct Profile {
     pub name: String,
 }
 
+/// A server rejection is a chat component, not a transport/codec error. Keep
+/// its JSON intact until the UI can resolve it in the player's language.
+pub enum LoginOutcome {
+    Joined(Connection, Profile),
+    Disconnected(String),
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum LoginPacket {
     Disconnect(String),
@@ -109,13 +116,31 @@ pub(super) fn finish(r: &Reader<'_>) -> Result<()> {
 /// between packets and used as the remaining socket read timeout; callers must
 /// also bound their authentication callback's HTTP requests.
 pub fn login(
+    connection: Connection,
+    host: &str,
+    port: u16,
+    name: &str,
+    timeout: Duration,
+    authenticate: impl FnMut(&str) -> Result<()>,
+) -> Result<(Connection, Profile)> {
+    match login_outcome(connection, host, port, name, timeout, authenticate)? {
+        LoginOutcome::Joined(connection, profile) => Ok((connection, profile)),
+        LoginOutcome::Disconnected(reason) => {
+            Err(Error::new(format!("server disconnected: {reason}")))
+        }
+    }
+}
+
+/// Login with a distinct outcome for server-supplied disconnect components.
+/// Uses the same authentication requirements and timeout budget as [`login`].
+pub fn login_outcome(
     mut connection: Connection,
     host: &str,
     port: u16,
     name: &str,
     timeout: Duration,
     mut authenticate: impl FnMut(&str) -> Result<()>,
-) -> Result<(Connection, Profile)> {
+) -> Result<LoginOutcome> {
     check_name(name)?;
     if host.is_empty() || host.encode_utf16().count() > 255 || host.contains('\0') {
         return Err(Error::new("invalid handshake host"));
@@ -152,13 +177,13 @@ pub fn login(
         let (id, bytes) = connection.recv()?;
         match LoginPacket::decode(id, &bytes)? {
             LoginPacket::Disconnect(reason) => {
-                return Err(Error::new(format!("server disconnected: {reason}")));
+                return Ok(LoginOutcome::Disconnected(reason));
             }
             LoginPacket::Success(profile) => {
                 connection
                     .reader
                     .set_read_timeout(Some(Duration::from_secs(30)))?;
-                return Ok((connection, profile));
+                return Ok(LoginOutcome::Joined(connection, profile));
             }
             LoginPacket::Compression(threshold) => {
                 if compressed {
