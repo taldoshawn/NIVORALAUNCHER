@@ -60,6 +60,7 @@ impl RendererMode {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
+    pub reference_ui_v1: bool,
     pub profile: u32,
     pub proxy: Option<String>,
     pub name: String,
@@ -120,6 +121,7 @@ fn default_true() -> bool {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            reference_ui_v1: false,
             profile: 0,
             proxy: None,
             name: String::new(),
@@ -226,9 +228,6 @@ impl Config {
             if config.device.display_hz < 120 {
                 config.device.display_hz = 120;
             }
-            if config.theme.preset == horizon_client::ui_theme::ThemePreset::ObsidianViolet {
-                config.theme.apply_preset(horizon_client::ui_theme::ThemePreset::EmeraldForest);
-            }
             config.apply_experimental_to_game(home);
             let _ = config.save(home);
         }
@@ -242,6 +241,13 @@ impl Config {
         }
         config.name = truncate_player_name(&config.name);
         config.mod_source = crate::shader_catalog::Origin::Horizon;
+        if !config.reference_ui_v1 {
+            if config.theme.preset == horizon_client::ui_theme::ThemePreset::EmeraldForest {
+                config.theme.apply_preset(horizon_client::ui_theme::ThemePreset::ObsidianViolet);
+            }
+            config.reference_ui_v1 = true;
+            let _ = config.save(home);
+        }
         config.theme.sanitize();
         horizon_client::ui_theme::set_active_theme(config.theme.resolve());
         horizon_client::ui_theme::motion::set_reduced_motion(
@@ -437,13 +443,13 @@ impl Page {
     ];
     pub fn name(self) -> &'static str {
         match self {
-            Page::Play => "Play",
+            Page::Play => "Jogar",
             Page::Mods => "Mods",
-            Page::Packs => "Resource Pack",
+            Page::Packs => "Resource Packs",
             Page::Shaders => "Shaders",
             Page::Compiler => "Compiler",
-            Page::Installed => "Installed",
-            Page::Settings => "Settings",
+            Page::Installed => "Instalados",
+            Page::Settings => "Configurações",
             Page::Skins => "Skins",
         }
     }

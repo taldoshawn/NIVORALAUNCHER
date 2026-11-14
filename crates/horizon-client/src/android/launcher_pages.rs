@@ -1277,7 +1277,12 @@ impl Launcher {
         };
         let (w, h) = (ui.w, ui.h);
         let active_th = horizon_client::ui_theme::active_theme();
-        ui.draw_theme_background(0.0, 0.0, w, h, &active_th);
+        if self.catalog.config.theme.preset == horizon_client::ui_theme::ThemePreset::ObsidianViolet
+            && self.catalog.config.theme.background_mode == horizon_client::ui_theme::BackgroundMode::Solid {
+            ui.fill(0.0, 0.0, w, h, my3_bg());
+        } else {
+            ui.draw_theme_background(0.0, 0.0, w, h, &active_th);
+        }
 
         // ---- Top Header Bar (brand lockup ... account pill) ----
         ui.horizon_logo(18.0, 12.0, 28.0);
@@ -1592,8 +1597,10 @@ impl Launcher {
                 }
                 let play_w = (content_w * 0.33).clamp(110.0, 190.0);
                 let play = [content_x + content_w - play_w - 66.0, top + hero_h - 56.0, play_w, 42.0];
-                button(&mut ui, &mut self.targets, play, if self.launching { "Abrindo…" } else if installed { "▶  Jogar" } else { "Instalar" }, Action::Play, true);
-                button(&mut ui, &mut self.targets, [play[0] + play_w + 8.0, play[1], 38.0, 42.0], "⌄", Action::GameVersion, false);
+                button(&mut ui, &mut self.targets, play, if self.launching { "Abrindo…" } else if installed { "Jogar" } else { "Instalar" }, Action::Play, true);
+                let selector = [play[0] + play_w + 8.0, play[1], 38.0, 42.0];
+                button(&mut ui, &mut self.targets, selector, "", Action::GameVersion, false);
+                ui.icon(Icon::ChevronDown, selector[0] + 11.0, selector[1] + 13.0, 16.0, my3_text());
                 let gap = 12.0;
                 let card_w = (content_w - gap * 2.0) / 3.0;
                 let cards_y = top + hero_h + 16.0;
