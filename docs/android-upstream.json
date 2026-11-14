@@ -36,5 +36,16 @@
     ],
     "moving_main_merged": false,
     "notes": "Reviewed newer account-save reporting and desktop encrypted-file storage changes. Android retains its Keystore AES/GCM store and reports sign-in save failures through the existing shared task. The selected stable nightly baseline is unchanged; no experimental UI branches were merged."
+  },
+  "pojav_controls_storage_review": {
+    "reviewed_date": "2026-11-13",
+    "fetched_main": "b04786cb2f39b0bab7002d6efd9ed59675351c1b",
+    "head_subject": "Zero the saved experience total when points are lost at level 0",
+    "files": [
+      "crates/horizon-client/src/entities.rs",
+      "crates/horizon-client/src/entities/experience_tests.rs",
+      "crates/horizon-client/src/game/commands.rs"
+    ],
+    "integration": "Head change concerns experience commands; no upstream merge included in this controls/storage update. Existing engine baseline retained."
   }
 }

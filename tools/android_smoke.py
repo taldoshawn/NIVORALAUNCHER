@@ -135,11 +135,11 @@ try:
     if os.environ.get('PROBE_GAME') == 'true':
         # Pixel 2 landscape, fixed profile above. This explores UI and records
         # screenshots for inspection; it does not assert successful gameplay.
-        adb('shell', 'input', 'tap', '1300', '610')
+        adb('shell', 'input', 'tap', '1300', '520')
         for i in range(6):
             time.sleep(30)
             (evidence/f'download-{i}.png').write_bytes(adb('exec-out', 'screencap', '-p').stdout)
-        adb('shell', 'input', 'tap', '1300', '610')
+        adb('shell', 'input', 'tap', '1300', '520')
         for i in range(4):
             time.sleep(30)
             (evidence/f'game-{i}.png').write_bytes(adb('exec-out', 'screencap', '-p').stdout)
