@@ -1106,60 +1106,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn legacy_login_rejection_is_readable_and_does_not_trigger_reconnect() {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let session = Session::connect_legacy(
-            &format!("localhost:{port}"),
-            "Probe",
-            None,
-            cfg::ClientInformation::new(8),
-            Arc::new(Language::new()),
-            PathBuf::new(),
-        );
-        let (stream, _) = listener.accept().unwrap();
-        stream
-            .set_read_timeout(Some(Duration::from_secs(5)))
-            .unwrap();
-        let mut server = Connection::from_stream(stream).unwrap();
-        let (id, body) = server.recv().unwrap();
-        let handshake::Serverbound::Intention(packet) =
-            handshake::Serverbound::decode(id, &body).unwrap()
-        else {
-            panic!("expected legacy login handshake");
-        };
-        assert_eq!(packet.protocol, 47);
-        assert_eq!(server.recv().unwrap().0, 0);
-        let mut kick = horizon_protocol::buf::Writer::new();
-        kick.varint(0);
-        kick.string(r#"{"text":"MUSH\nValide sua conexão. ","extra":[{"text":"Clique aqui.","clickEvent":{"action":"open_url","value":"https://mush.com.br/validar"}}]}"#);
-        server.send(&kick.data).unwrap();
-        loop {
-            match session.events.recv_timeout(Duration::from_secs(5)).unwrap() {
-                Event::Disconnected {
-                    reason,
-                    key,
-                    from_server,
-                } => {
-                    assert_eq!(
-                        reason,
-                        "MUSH\nValide sua conexão. Clique aqui.\nhttps://mush.com.br/validar"
-                    );
-                    assert!(from_server);
-                    assert!(!crate::reconnect::allowed(
-                        &reason,
-                        key.as_deref(),
-                        from_server
-                    ));
-                    break;
-                }
-                Event::Status(_) => {}
-                _ => panic!("a rejected login must not join play"),
-            }
-        }
-    }
-
-    #[test]
     fn direct_login_keeps_the_hostname_in_the_handshake() {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();

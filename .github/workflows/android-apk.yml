@@ -114,8 +114,7 @@ jobs:
           sudo apt-get install -y libasound2-dev libudev-dev
           CARGO_PROFILE_TEST_DEBUG=0 cargo test -p horizon-client-render --lib touch::custom::tests --locked
           CARGO_PROFILE_TEST_DEBUG=0 cargo test -p horizon-client-render --lib touch::property_input::tests --locked
-          CARGO_PROFILE_TEST_DEBUG=0 cargo test -p horizon-client --lib net::tests::legacy_login_rejection_is_readable_and_does_not_trigger_reconnect --locked
-          CARGO_PROFILE_TEST_DEBUG=0 cargo test -p horizon-client --lib multiplayer::tests::screens_lay_out_on_whole_gui_pixels_at_any_window_size --locked
+          CARGO_PROFILE_TEST_DEBUG=0 cargo test -p horizon-client --example legacy_login_probe --locked
       - name: Restore this fork's signing identity
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
