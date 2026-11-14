@@ -88,6 +88,7 @@ pub enum Face {
     SemiBold,
     /// Counts, timestamps and the boot screen's console lines.
     Mono,
+    Bold,
 }
 impl Face {
     #[allow(non_upper_case_globals)]
@@ -120,6 +121,10 @@ pub fn set_ui_scale_percent(percent: u32) {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Icon {
     HorizonLogo,
+    Cube,
+    Puzzle,
+    Grid,
+    Bolt,
     ChevronDown,
     Play,
     Mods,
@@ -154,7 +159,7 @@ pub enum Icon {
 }
 
 struct Fonts {
-    faces: [FontRef<'static>; 4],
+    faces: [FontRef<'static>; 5],
 }
 impl Fonts {
     fn load() -> Self {
@@ -170,6 +175,7 @@ impl Fonts {
                 f(horizon_theme::fonts::GOOGLE_SANS_MEDIUM),
                 f(horizon_theme::fonts::GOOGLE_SANS_SEMIBOLD),
                 f(horizon_theme::fonts::GEIST_MONO),
+                f(horizon_theme::fonts::GOOGLE_SANS_BOLD),
             ],
         }
     }
@@ -432,6 +438,21 @@ static HORIZON_LOGO_RUNS: [(u8, u8, u8, u8, u8); 998] = [
 
 fn icon_hit(icon: Icon, u: f32, v: f32) -> bool {
     match icon {
+        Icon::Cube => {
+            [(0.5,0.08,0.88,0.28),(0.88,0.28,0.88,0.73),(0.88,0.73,0.5,0.94),(0.5,0.94,0.12,0.73),(0.12,0.73,0.12,0.28),(0.12,0.28,0.5,0.08),(0.12,0.28,0.5,0.50),(0.5,0.50,0.88,0.28),(0.5,0.50,0.5,0.94)].iter().any(|&(x0,y0,x1,y1)| seg_dist(u,v,x0,y0,x1,y1)<0.035)
+        }
+        Icon::Grid => [(0.14,0.14),(0.58,0.14),(0.14,0.58),(0.58,0.58)].iter().any(|&(x,y)| {
+            u>=x && u<=x+0.28 && v>=y && v<=y+0.28 && !(u>x+0.045 && u<x+0.235 && v>y+0.045 && v<y+0.235)
+        }),
+        Icon::Bolt => [(0.58,0.08,0.24,0.55),(0.24,0.55,0.51,0.55),(0.51,0.55,0.40,0.94),(0.40,0.94,0.80,0.39),(0.80,0.39,0.53,0.39),(0.53,0.39,0.58,0.08)].iter().any(|&(x0,y0,x1,y1)|seg_dist(u,v,x0,y0,x1,y1)<0.04),
+        Icon::Puzzle => {
+            let inside = |x:f32,y:f32| {
+                (((0.23..=0.77).contains(&x) && (0.23..=0.77).contains(&y))
+                    || (x-0.50).hypot(y-0.20)<0.115 || (x-0.80).hypot(y-0.50)<0.115)
+                    && (x-0.20).hypot(y-0.50)>0.105 && (x-0.50).hypot(y-0.80)>0.105
+            };
+            inside(u,v) && [(0.055,0.0),(-0.055,0.0),(0.0,0.055),(0.0,-0.055)].iter().any(|(x,y)|!inside(u+x,v+y))
+        }
         Icon::HorizonLogo => {
             // Single-colour Horizon sunset mark: a half sun with two gaps over a city skyline.
             let dx = u - 0.50;
@@ -982,7 +1003,9 @@ impl Cache {
         }
         // Fit project icons (<= 48x48) and wide gallery screenshots (<= 96x54) into the dedicated
         // bottom image band (`y: 320..512`) so they never overflow the atlas shelf.
-        let (max_w, max_h) = if w > h * 4 / 3 { (96u32, 54u32) } else { (48u32, 48u32) };
+        let (max_w, max_h) = if key == "pojav/reference/hero" { (1024, 320) }
+            else if key == "pojav/reference/brand" { (96, 96) }
+            else if w > h * 4 / 3 { (96u32, 54u32) } else { (48u32, 48u32) };
         let (tw, th, mut masked) = if w > max_w || h > max_h {
             let scale = (max_w as f32 / w as f32).min(max_h as f32 / h as f32);
             let nw = ((w as f32 * scale).round() as u32).clamp(1, max_w);
@@ -1002,7 +1025,7 @@ impl Cache {
             (w, h, rgba.to_vec())
         };
         // Apply a soft rounded-corner mask to project icons so they sit cleanly in cards.
-        let r = (tw.min(th) as f32 * 0.22).max(2.0);
+        let r = (tw.min(th) as f32 * if key == "pojav/reference/hero" { 0.105 } else if key == "pojav/reference/brand" { 0.0 } else { 0.22 }).max(0.0);
         let (wf, hf) = (tw as f32, th as f32);
         for y in 0..th {
             for x in 0..tw {

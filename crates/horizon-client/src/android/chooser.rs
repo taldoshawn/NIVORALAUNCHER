@@ -492,3 +492,23 @@ impl Chooser {
         );
     }
 }
+
+impl Chooser {
+    pub(super) fn local_actions(index: usize, name: String) -> Self {
+        Self {title: "Opções do conteúdo", help: "Exporte uma cópia ou remova o conteúdo instalado.", device: Some(name), choices: vec![("Exportar".into(), "Escolher destino no Android".into(), Action::ExportLocal(index), false), ("Excluir".into(), "Solicitar confirmação".into(), Action::DeleteLocal(index), false), ("Voltar".into(), String::new(), Action::Dismiss, false)], scroll:0.0}
+    }
+}
+
+impl Chooser {
+    pub(super) fn catalog_sources(page: crate::catalog::Page) -> Self {
+        use crate::{catalog::Page, shader_catalog::Origin};
+        let kind=match page {Page::Mods=>horizon_client::content_files::Kind::Mods,Page::Shaders=>horizon_client::content_files::Kind::Shaders,_=>horizon_client::content_files::Kind::Packs};
+        let mut choices=Vec::new();
+        if page!=Page::Packs {
+            choices.push(("Horizon".into(),"Catálogo do cliente nativo".into(),if page==Page::Mods {Action::ModSource(Origin::Horizon)}else{Action::ShaderSource(Origin::Horizon)},false));
+        }
+        choices.push(("Modrinth".into(),"Buscar arquivos no catálogo".into(),if page==Page::Mods {Action::ModSource(Origin::Modrinth)}else if page==Page::Shaders {Action::ShaderSource(Origin::Modrinth)}else{Action::Search},false));
+        choices.push(("Importar arquivo".into(),"Selecionar um arquivo no Android".into(),Action::Import(kind),false));
+        Self {title:"Origem do conteúdo",help:"A compatibilidade depende do formato e da API suportados pelo cliente.",device:None,choices,scroll:0.0}
+    }
+}

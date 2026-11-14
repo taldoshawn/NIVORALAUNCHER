@@ -78,6 +78,13 @@ try:
         raise RuntimeError('App crash marker in logcat')
     (evidence/'launcher.png').write_bytes(adb('exec-out', 'screencap', '-p').stdout)
     startup_passed = True
+    # Retain the six actual reference pages for manual visual comparison.
+    # Pixel 2's usable viewport is 1794x1080; layout uses the 1232x576 reference.
+    for label, y in [('mods', 294), ('resource-packs', 379), ('shaders', 463),
+                     ('installed', 548), ('settings', 632), ('play', 209)]:
+        adb('shell', 'input', 'tap', '214', str(y))
+        time.sleep(3)
+        (evidence/('ui-' + label + '.png')).write_bytes(adb('exec-out', 'screencap', '-p').stdout)
     # Verify real app-owned external folders and seed one original empty pack.
     adb_privilege(True)
     data = '/data/user/0/' + app + '/files'
@@ -135,11 +142,11 @@ try:
     if os.environ.get('PROBE_GAME') == 'true':
         # Pixel 2 landscape, fixed profile above. This explores UI and records
         # screenshots for inspection; it does not assert successful gameplay.
-        adb('shell', 'input', 'tap', '1300', '520')
+        adb('shell', 'input', 'tap', '1450', '420')
         for i in range(6):
             time.sleep(30)
             (evidence/f'download-{i}.png').write_bytes(adb('exec-out', 'screencap', '-p').stdout)
-        adb('shell', 'input', 'tap', '1300', '520')
+        adb('shell', 'input', 'tap', '1450', '420')
         for i in range(4):
             time.sleep(30)
             (evidence/f'game-{i}.png').write_bytes(adb('exec-out', 'screencap', '-p').stdout)

@@ -96,3 +96,22 @@ Isso ainda não comprova equivalência visual completa com o PojavLauncher.
 Consulte [Pastas de conteúdo](android-content-folders.md) para os locais de
 mods, texturas, shaders e presets, incluindo a pasta escolhida fora de
 `Android/data`.
+
+## Interface do launcher conforme as referências
+
+As seis páginas principais usam navegação lateral, paleta escura com destaque
+roxo, fonte do aplicativo, cartões e controles com geometria dimensionada a
+partir da referência de 1232×576 pixels úteis. A página Jogar inclui arte
+original de lago ao pôr do sol, marca de cubo roxo, versão selecionada, renderer,
+limite configurado de FPS e contagens reais de conteúdo ativo.
+
+Mods, Resource Packs e Shaders mantêm os catálogos reais, seleção de origem,
+busca, paginação e importação. Instalados apresenta os arquivos do perfil,
+filtros, ativação e um menu para exportação/exclusão. Configurações apresenta
+os seis acessos da referência; as opções detalhadas e os diálogos permanecem
+ligados às implementações do aplicativo.
+
+As imagens `assets/launcher/hero.png` e `brand.png` são arte original gerada
+para este fork, não capturas de outra aplicação nem recursos distribuídos do
+jogo. O emulador retém capturas das seis páginas para revisão visual. Essas
+capturas não representam teste de desempenho em um telefone físico.

@@ -1,4 +1,6 @@
 use super::*;
+#[path = "launcher_pages/reference.rs"]
+mod reference;
 use crate::catalog::SettingsCategory;
 use horizon_client::{
     gfx::Renderer,
@@ -288,6 +290,8 @@ pub(super) enum Action {
     OpenFolder(horizon_client::content_files::Kind),
     ToggleSection(usize),
     ToggleLocal(usize),
+    LocalOptions(usize),
+    CatalogSources,
     DeleteLocal(usize),
     ConfirmDeleteLocal,
     ConfirmExit,
@@ -1284,177 +1288,18 @@ impl Launcher {
             ui.draw_theme_background(0.0, 0.0, w, h, &active_th);
         }
 
-        // ---- Top Header Bar (brand lockup ... account pill) ----
-        ui.horizon_logo(18.0, 12.0, 28.0);
-        let account_name = self
-            .login
-            .profile
-            .clone()
-            .unwrap_or_else(|| self.catalog.config.name.clone());
-        let account_text_w = ui.measure(Face::Medium, 13.5, &account_name).min(136.0);
-        let pill_w = (account_text_w + 64.0).clamp(114.0, 204.0);
-        let pill_x = (w - 18.0 - pill_w).max(190.0);
-        let pill_y = 11.0;
-        let pill_h = 36.0;
-
-        let eq_btn_rect = [pill_x - 44.0, pill_y, 36.0, pill_h];
-        ui.rounded(
-            eq_btn_rect[0],
-            eq_btn_rect[1],
-            eq_btn_rect[2],
-            eq_btn_rect[3],
-            8.0,
-            my3_surface(),
-        );
-        ui.border(
-            eq_btn_rect[0],
-            eq_btn_rect[1],
-            eq_btn_rect[2],
-            eq_btn_rect[3],
-            8.0,
-            my3_border(),
-        );
-        ui.icon(
-            Icon::MenuEquals,
-            eq_btn_rect[0] + 9.0,
-            eq_btn_rect[1] + 9.0,
-            18.0,
-            my3_accent(),
-        );
-        self.targets.push((eq_btn_rect, Action::OpenControlEditor));
-
-        let brand_w = (eq_btn_rect[0] - 66.0).max(70.0);
-        ui.text(Face::SemiBold, 16.0, 54.0, 10.0, my3_text(), "Pojav Rust");
-        let version_line = "Minecraft no Android".to_owned();
-        let fitted_version = ui.fit_text(Face::Regular, 11.0, &version_line, brand_w);
-        ui.text(
-            Face::Regular,
-            11.0,
-            54.0,
-            30.0,
-            my3_muted(),
-            &fitted_version,
-        );
-
-        // Top-right Account Selector with avatar head, username, and chevron.
-        ui.rounded(pill_x, pill_y, pill_w, pill_h, 9.0, my3_surface());
-        ui.border(pill_x, pill_y, pill_w, pill_h, 9.0, my3_border());
-        ui.avatar_head_2d(pill_x + 6.0, pill_y + 4.0, 28.0, &account_name);
-        if self.login.signed_in {
-            ui.rounded(pill_x + 26.0, pill_y + 24.0, 9.0, 9.0, 4.5, my3_bg());
-            ui.rounded(
-                pill_x + 27.0,
-                pill_y + 25.0,
-                7.0,
-                7.0,
-                3.5,
-                color::hex(0x59D98E, 255),
-            );
-        }
-        let fitted_acct = ui.fit_text(Face::Medium, 13.5, &account_name, pill_w - 62.0);
-        ui.text(
-            Face::Medium,
-            13.5,
-            pill_x + 37.0,
-            pill_y + 8.0,
-            my3_text(),
-            &fitted_acct,
-        );
-        ui.icon(
-            Icon::ChevronDown,
-            pill_x + pill_w - 22.0,
-            pill_y + 12.0,
-            12.0,
-            my3_muted(),
-        );
-        self.targets
-            .push(([pill_x, pill_y, pill_w, pill_h], Action::Account));
-
-        // ---- Left Jetpack Compose Material You NavigationRail + Stadium Active Indicator ----
-        let sidebar_w = if w < 560.0 { 136.0 } else { 184.0 };
-        let rail_h = (h - 64.0).max(40.0);
-        ui.fill(sidebar_w, 0.0, 1.0, h, my3_border());
-        let _ = rail_h;
-        let nav_start_y = 60.0;
-        let nav_step = ((h - nav_start_y - 12.0) / Page::ALL.len() as f32).clamp(31.0, 43.0);
-        let nav_h = (nav_step - 4.0).clamp(27.0, 38.0);
-        let selected_idx = Page::ALL
-            .iter()
-            .position(|p| *p == self.catalog.page)
-            .unwrap_or(0);
-        let target_nav_y = nav_start_y + selected_idx as f32 * nav_step;
-        let has_any_modal = self.catalog.project_modal.is_some()
-            || self.catalog.fm_modal.is_some()
-            || self.chooser.is_some()
-            || self.login.visible
-            || self.exit_confirmation;
-        self.anim.step(
-            self.catalog.page,
-            self.catalog.settings_category,
-            target_nav_y,
-            has_any_modal,
-            self.catalog.sections,
-        );
-
-        // Jetpack Compose NavigationRailItem stadium active indicator (secondaryContainer fill, no harsh wireframe border)
-        let vel_stretch = (self.anim.nav_pill_vel.abs() * 0.012).clamp(0.0, 4.5);
-        let pill_draw_y = self.anim.nav_pill_y - vel_stretch * 0.5;
-        let pill_draw_h = nav_h + vel_stretch;
-        let _pill_rad = horizon_client::ui_theme::motion::morph_radius(
-            pill_draw_h * 0.5,
-            pill_draw_h * 0.42,
-            pill_draw_h * 0.36,
-            (vel_stretch / 4.5).clamp(0.0, 1.0),
-            0.0,
-        );
-        ui.rounded(
-            12.0,
-            pill_draw_y,
-            sidebar_w - 24.0,
-            pill_draw_h,
-            9.0,
-            my3_nav_active(),
-        );
-
-        for (i, page) in Page::ALL.iter().enumerate() {
-            let nx = 10.0;
-            let ny = nav_start_y + i as f32 * nav_step;
-            let nw = sidebar_w - 20.0;
-            let selected = *page == self.catalog.page;
-            let ic_col = if selected { my3_accent() } else { my3_muted() };
-            let fg = if selected { my3_text() } else { my3_muted() };
-            ui.icon(
-                page_icon(*page),
-                nx + 16.0,
-                ny + (nav_h - 17.0) * 0.5,
-                17.0,
-                ic_col,
-            );
-            let face = if selected { Face::SemiBold } else { Face::Medium };
-            let label = ui.fit_text(face, 13.5, page.name(), nw - 44.0);
-            ui.text(
-                face,
-                13.5,
-                nx + 41.0,
-                ny + (nav_h - 19.0) * 0.5,
-                fg,
-                &label,
-            );
-            self.targets
-                .push(([nx, ny, nw, nav_h], Action::Page(*page)));
-        }
-
-        // ---- Main Content Area (with spatial staggered entrance & glassmorphism) ----
-        let content_x = sidebar_w + 24.0;
-        let content_w = (w - content_x - 24.0).max(160.0);
+        let layout = self.reference_shell(&mut ui);
+        let content_x = layout.x;
+        let content_w = layout.w;
         let compact = content_w < 430.0;
         let page = self.catalog.page;
-        let slide_y = self.anim.page_slide * 0.35;
-        ui.set_stagger_transition(self.anim.page_fade, content_x, 52.0);
+        let slide_y = 0.0;
 
         // When any catalog item (Mod, Pack, Shader) is downloading/installing, take the entire
         // middle screen to show the MY3 downloading view with Speed, ETA, and Steps.
-        if let Some((source_id, _)) = self
+        if self.reference_body(&mut ui, layout) {
+            // Reference pages share the existing modal, status and focus handling below.
+        } else if let Some((source_id, _)) = self
             .catalog
             .downloading
             .as_ref()
@@ -7051,6 +6896,7 @@ impl Launcher {
             }
 
             Some(Action::ShaderSource(origin)) => {
+                self.chooser = None;
                 self.catalog.config.shader_source = origin;
                 self.catalog.config.save(&self.home)?;
                 self.catalog.offset = 0;
@@ -7058,6 +6904,7 @@ impl Launcher {
                 self.catalog.browse(&self.home);
             }
             Some(Action::ModSource(origin)) => {
+                self.chooser = None;
                 self.catalog.config.mod_source = origin;
                 self.catalog.config.save(&self.home)?;
                 self.catalog.offset = 0;
@@ -7089,6 +6936,7 @@ impl Launcher {
                 self.catalog.status = format!("Opened '{rel_dir}' in Profile File Manager.");
             }
             Some(Action::Import(kind)) => {
+                self.chooser = None;
                 crate::platform::hide();
                 let home = self.catalog.config.game_home(&self.home);
                 if let Err(e) = crate::documents::begin(kind, home) {
@@ -7098,6 +6946,16 @@ impl Launcher {
             Some(Action::ToggleSection(i)) => {
                 self.catalog.sections[i] = !self.catalog.sections[i];
                 self.catalog.scroll = 0.0;
+            }
+            Some(Action::CatalogSources) => {
+                crate::platform::hide();
+                self.catalog.editing = None;
+                self.chooser = Some(super::chooser::Chooser::catalog_sources(self.catalog.page));
+            }
+            Some(Action::LocalOptions(i)) => {
+                crate::platform::hide();
+                self.catalog.editing = None;
+                self.chooser = Some(super::chooser::Chooser::local_actions(i, self.catalog.local.get(i).map(|item| item.title.clone()).unwrap_or_default()));
             }
             Some(Action::ToggleLocal(i)) => self.catalog.toggle_local(&self.home, i),
             Some(Action::DeleteLocal(i)) => {
@@ -7313,6 +7171,7 @@ impl Launcher {
             }
             Some(Action::WardrobeHideCape) => self.wardrobe.hide_cape(),
             Some(Action::Search) => {
+                self.chooser = None;
                 crate::platform::hide();
                 self.catalog.offset = 0;
                 self.catalog.scroll = 0.0;
@@ -7741,6 +7600,7 @@ impl Launcher {
                 self.catalog.scroll = 0.0;
             }
             Some(Action::ExportLocal(idx)) => {
+                self.chooser = None;
                 if let Some(item) = self.catalog.local.get(idx).cloned() {
                     let game_home = self.catalog.config.game_home(&self.home);
                     crate::document_store::sync_mods_folder(&game_home);
