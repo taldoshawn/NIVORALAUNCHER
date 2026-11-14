@@ -72,6 +72,8 @@ jobs:
             cp "packaging/releases/$RELEASE_VERSION/VALIDATION.json" dist/
           fi
           (cd dist && sha256sum --check SHA256SUMS.txt)
+      - name: Package documentation and original examples with provenance
+        run: python3 tools/package_android_docs.py --output dist --source-commit "$APK_COMMIT"
       - name: Upload only verified public files to the draft release
         env:
           GH_TOKEN: ${{ github.token }}
