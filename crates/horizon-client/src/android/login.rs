@@ -528,23 +528,8 @@ impl Login {
 
         if self.choosing {
             let row_h = ((footer_y - content_y - 26.0) / 4.0).clamp(36.0, 56.0);
-            let offline_current = self.profile.is_none();
-            let offline_label = if offline_name.trim().is_empty() {
-                "Offline player"
-            } else {
-                offline_name
-            };
-            self.account_row(
-                ui,
-                targets,
-                [x + 20.0, content_y, w - 40.0, row_h],
-                offline_label,
-                "Offline profile",
-                offline_current,
-                if offline_name.trim().is_empty() { Action::OfflineAccount } else { Action::SelectOffline },
-            );
             let total = self.saved_accounts.len() + self.saved_offline.len();
-            for (row, index) in (self.account_offset..total).take(3).enumerate() {
+            for (row, index) in (self.account_offset..total).take(4).enumerate() {
                 let (name, detail, current, action) = if let Some(account) = self.saved_accounts.get(index) {
                     (account.name.as_str(),
                      if account.provider == account::Provider::Ely { "Ely.by" } else { "Microsoft" },
@@ -556,7 +541,7 @@ impl Login {
                     (name.as_str(), "Saved local profile", self.profile.is_none() && name == offline_name,
                      Action::SelectSavedOffline(local_index))
                 };
-                let cy = content_y + (row + 1) as f32 * (row_h + 6.0);
+                let cy = content_y + row as f32 * (row_h + 6.0);
                 self.account_row(ui, targets, [x + 20.0, cy, w - 40.0, row_h],
                                  name, detail, current, action);
             }

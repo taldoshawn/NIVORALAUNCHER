@@ -4,6 +4,7 @@ use crate::ui_theme::{Face, Ui};
 
 const ROW: f32 = 48.0;
 const ROWS: usize = 22;
+const ROW_ORDER: [usize; ROWS] = [0, 1, 2, 5, 6, 7, 8, 14, 15, 16, 3, 4, 9, 10, 11, 12, 13, 17, 18, 19, 20, 21];
 fn geometry(w: f32, h: f32, center: f32) -> [f32; 4] {
     let width = (w * 0.42).clamp(220.0, 340.0).min(w);
     [if center < 0.5 { w - width } else { 0.0 }, 0.0, width, h]
@@ -73,7 +74,7 @@ pub(super) fn draw(tc: &TouchControls, ed: &Editor, ui: &mut Ui) {
         "Espessura da borda",
         "Cor do botão (AARRGGBB)",
         "Cor da borda (AARRGGBB)",
-        "Manter pressionado",
+        "Alternável (desligado: segurar)",
         "Passar toque para câmera",
         "Ativar ao deslizar",
         "Mostrar no jogo",
@@ -82,11 +83,12 @@ pub(super) fn draw(tc: &TouchControls, ed: &Editor, ui: &mut Ui) {
         "Clonar botão",
         "Adicionar botão à gaveta",
     ];
-    for (row, label) in labels.iter().enumerate() {
+    for (display_row, &row) in ROW_ORDER.iter().enumerate() {
+        let label = labels[row];
         if row == 21 && button.drawer_id.is_none() {
             continue;
         }
-        let y = top + row as f32 * ROW - ed.side_scroll;
+        let y = top + display_row as f32 * ROW - ed.side_scroll;
         if y + ROW < top || y > h {
             continue;
         }
@@ -200,10 +202,11 @@ pub(super) fn touch(
     if !ended || moved {
         return;
     }
-    let row = ((point[1] - 52.0 + ed.side_scroll) / ROW) as usize;
-    if row >= ROWS {
+    let display_row = ((point[1] - 52.0 + ed.side_scroll) / ROW) as usize;
+    if display_row >= ROWS {
         return;
     }
+    let row = ROW_ORDER[display_row];
     super::push_undo_snapshot(ed, &tc.settings);
     if row == 0 || numeric_row(row).is_some() {
         ed.numeric_property = numeric_row(row);

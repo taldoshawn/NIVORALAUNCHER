@@ -7618,6 +7618,9 @@ impl Game<'_> {
     }
     /// `Minecraft.pause`: a single-player game with a pausing screen open.
     fn pauses_game(&self) -> bool {
+        #[cfg(target_os = "android")]
+        return false;
+        #[cfg(not(target_os = "android"))]
         self.has_singleplayer_server()
             && !self.is_published()
             && self.title.is_none()

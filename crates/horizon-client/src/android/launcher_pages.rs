@@ -1383,16 +1383,14 @@ impl Launcher {
                     };
                 let paused = self.install_paused.load(Ordering::Relaxed);
                 self.install_transfer.observe(done_mib, paused);
-                let sub_left = format!(
-                    "Minecraft 26.3 • Profile {}",
-                    self.catalog.config.profile + 1
-                );
+                let selected = if self.catalog.config.legacy18 { "1.8.9" } else { "26.3" };
+                let sub_left = format!("Servidor {selected} • Perfil {}", self.catalog.config.profile + 1);
                 let sub_right = format!(
                     "{done_mib:.1} / {total_mib:.1} MiB ({:.0}%)",
                     overall * 100.0
                 );
                 let stage_text = match progress.stage {
-                    InstallStage::Download => "Downloading Java Edition 26.3 client.jar",
+                    InstallStage::Download => "Baixando recursos do motor (Java Edition 26.3)",
                     other => other.label(),
                 };
                 draw_my3_progress_view(
@@ -7025,10 +7023,10 @@ impl Launcher {
                 self.login.ely = false;
             }
             Some(Action::SavedPage(next)) => {
-                if next && self.login.account_offset + 3 < self.login.saved_accounts.len() + self.login.saved_offline.len() {
-                    self.login.account_offset += 3;
+                if next && self.login.account_offset + 4 < self.login.saved_accounts.len() + self.login.saved_offline.len() {
+                    self.login.account_offset += 4;
                 } else if !next {
-                    self.login.account_offset = self.login.account_offset.saturating_sub(3);
+                    self.login.account_offset = self.login.account_offset.saturating_sub(4);
                 }
             }
             Some(Action::SelectAccount(index)) => {

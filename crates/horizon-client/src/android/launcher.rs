@@ -507,7 +507,11 @@ impl Launcher {
             if !self.launching {
                 self.launching = true;
                 self.error = None;
-                self.catalog.status = "Launching Minecraft 26.3...".into();
+                self.catalog.status = if self.catalog.config.legacy18 {
+                    "Starting Minecraft (1.8.9 server compatibility)..."
+                } else {
+                    "Starting Minecraft 26.3..."
+                }.into();
                 let game_home = self.catalog.config.game_home(&self.home);
                 if !self.session_ready && crate::account::Accounts::load().selected().is_some() {
                     let id = self.catalog.config.microsoft_client_id.clone();
