@@ -1769,14 +1769,14 @@ impl TouchUi {
         };
 
         let (btn_w, btn_h) = if settings.control_style == ControlStyle::Mcpe {
-            (44.0, 36.0)
+            (20.0, 18.0)
         } else {
-            (48.0, 42.0)
+            (20.0, 18.0)
         };
         let max_btn_x = (w - btn_w - 4.0).max(4.0);
         let max_btn_y = (h - btn_h - 4.0).max(4.0);
-        let btn_x = (settings.floating_menu_pos[0] * w).clamp(4.0, max_btn_x);
-        let btn_y = (settings.floating_menu_pos[1] * h).clamp(4.0, max_btn_y);
+        let btn_x = (w - btn_w) * 0.5;
+        let btn_y = 4.0;
         let btn_rect = [btn_x, btn_y, btn_w, btn_h];
 
         if let Some((drag_id, offset, mut moved)) = self.floating_drag {
@@ -2715,12 +2715,12 @@ impl TouchUi {
         // Draw moveable Floating Menu Button (MCPE 42x42dp stone-bevel H button OR GoyControl 48x42dp '=' pill)
         if !self.expanded && bubble_alpha > 0.001 {
             if settings.control_style == ControlStyle::Mcpe {
-                let btn_w = 44.0;
-                let btn_h = 36.0;
+                let btn_w = 20.0;
+                let btn_h = 18.0;
                 let btn_x =
-                    (settings.floating_menu_pos[0] * w).clamp(4.0, (w - btn_w - 4.0).max(4.0));
+                    (w - btn_w) * 0.5;
                 let btn_y =
-                    (settings.floating_menu_pos[1] * h).clamp(4.0, (h - btn_h - 4.0).max(4.0));
+                    4.0;
                 let scale_rgba = |r: u8, g: u8, bl: u8, al: u8| -> u32 {
                     rgba(r, g, bl, (f32::from(al) * bubble_alpha).round() as u8)
                 };
@@ -2767,12 +2767,12 @@ impl TouchUi {
                     ui.fill(dx_i, dot_y, dot_sz, dot_sz, dot_fg);
                 }
             } else {
-                let btn_w = 48.0;
-                let btn_h = 42.0;
+                let btn_w = 20.0;
+                let btn_h = 18.0;
                 let btn_x =
-                    (settings.floating_menu_pos[0] * w).clamp(6.0, (w - btn_w - 6.0).max(6.0));
+                    (w - btn_w) * 0.5;
                 let btn_y =
-                    (settings.floating_menu_pos[1] * h).clamp(4.0, (h - btn_h - 4.0).max(4.0));
+                    4.0;
                 ui.rounded(
                     btn_x + 1.5,
                     btn_y + 3.0,
@@ -2806,9 +2806,9 @@ impl TouchUi {
                 );
                 ui.icon(
                     Icon::MenuEquals,
-                    btn_x + (btn_w - 22.0) * 0.5,
-                    btn_y + (btn_h - 22.0) * 0.5,
-                    22.0,
+                    btn_x + (btn_w - 12.0) * 0.5,
+                    btn_y + (btn_h - 12.0) * 0.5,
+                    12.0,
                     color::with_alpha(
                         if self.floating_menu {
                             accent_fg
@@ -7161,11 +7161,11 @@ pub fn touch_hud_editor(
                                     let dir = if mask == 4 { 1.0 } else { -1.0 };
                                     pl.height_ratio = (start_hr + dir * dy * 8.5).clamp(0.45, 3.0);
                                 } else {
-                                    // Corner handle: scale overall size + aspect ratio
+                                    // Each corner axis changes its own dimension.
                                     let sx = if (mask & 1) != 0 { dx } else { -dx };
                                     let sy = if (mask & 4) != 0 { dy } else { -dy };
-                                    let diag = (sx + sy) * 0.85;
-                                    pl.size = (start_size + diag).clamp(0.05, 0.44);
+                                    pl.width_ratio = (start_wr + sx * (w / h.max(1.0)) / start_size).clamp(0.4, 3.2);
+                                    pl.height_ratio = (start_hr + sy / start_size).clamp(0.4, 3.2);
                                 }
                             };
                             if let Some(idx) = ed.selected_custom {

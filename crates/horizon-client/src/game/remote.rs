@@ -1738,7 +1738,13 @@ impl Game<'_> {
             CHUNK_PACKETS_PER_FRAME
         };
         let mut chunks = Duration::ZERO;
+        let network_started = Instant::now();
         while let Some(item) = events.pop_front() {
+            if cfg!(target_os = "android") && self.options.legacy18
+                && network_started.elapsed() >= Duration::from_millis(4) {
+                events.push_front(item);
+                break;
+            }
             let chunk = matches!(
                 item,
                 Received::Chunk(_)
