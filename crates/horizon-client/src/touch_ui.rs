@@ -8482,6 +8482,26 @@ pub fn touch_hud_editor(
 mod tests {
     use super::*;
     #[test]
+    fn button_name_text_wins_over_an_open_key_picker() {
+        let mut controls = crate::touch::TouchControls::default();
+        controls.settings = crate::touch::Settings::default_pojav();
+        controls.open_editor();
+        let ed = controls.editor.as_mut().unwrap();
+        ed.selected_custom = Some(0);
+        ed.key_picker = true;
+        ed.editing_button_label = true;
+        ed.button_label_input.clear();
+        let key = controls.settings.custom_buttons[0].key.clone();
+        assert!(!controls.capture_custom_text("Novo nome"));
+        assert!(apply_editor_button_label_output(&mut controls, &Output::Text("Novo nome".into())));
+        assert_eq!(controls.settings.custom_buttons[0].custom_label, "Novo nome");
+        assert_eq!(controls.settings.custom_buttons[0].key, key);
+        let bytes = serde_json::to_vec(&controls.settings).unwrap();
+        let restored: crate::touch::Settings = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(restored.custom_buttons[0].custom_label, "Novo nome");
+    }
+
+    #[test]
     fn explicit_mouse_drag_does_not_generate_an_extra_tap_or_hold_click() {
         let mut ui = TouchUi::default();
         ui.relative_touch(

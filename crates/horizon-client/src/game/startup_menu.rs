@@ -10,6 +10,21 @@ use horizon_client::{
 };
 use winit::{event::KeyEvent, keyboard::ModifiersState};
 
+#[cfg(target_os = "android")]
+pub(super) fn control_documents(controls: &mut horizon_client::touch::TouchControls) {
+    let Some(ed) = controls.editor.as_mut() else { return; };
+    let import = std::mem::take(&mut ed.import_pojav_requested);
+    let export = std::mem::take(&mut ed.export_pojav_requested);
+    let result = if import {
+        crate::documents::begin_control_import(std::env::current_dir().unwrap_or_default())
+    } else if export {
+        horizon_client::touch::pojav::export(&controls.settings)
+            .and_then(|value| serde_json::to_vec_pretty(&value).map_err(|e| e.to_string()))
+            .and_then(|bytes| crate::documents::begin_control_export(std::env::current_dir().unwrap_or_default(), "pojav-controls.json".into(), bytes))
+    } else { Ok(()) };
+    if let Err(error) = result { if let Some(ed) = controls.editor.as_mut() { ed.status_msg = Some(error); } }
+}
+
 #[derive(Default)]
 pub(super) struct StartupMenu {
     #[cfg(target_os = "android")]
@@ -811,11 +826,14 @@ impl Loading {
 
     #[cfg(target_os = "android")]
     pub(super) fn menu_android_keyboard(&mut self) {
+        control_documents(&mut self.menu.controls);
         use horizon_client::osk::Output;
         if let Some(ed) = self.menu.controls.editor.as_mut()
             && std::mem::take(&mut ed.keyboard_request)
         {
-            let text = if ed.editing_save_desc {
+            let text = if ed.editing_button_label {
+                        ed.button_label_input.clone()
+                    } else if ed.editing_save_desc {
                 ed.save_desc_input.clone()
             } else {
                 ed.save_name_input.clone()
@@ -834,6 +852,12 @@ impl Loading {
             log::info!("{}", notice.text);
         }
         for out in crate::platform::poll() {
+            if horizon_client::touch_ui::apply_editor_button_label_output(&mut self.menu.controls, &out) {
+                self.settings.touch = self.menu.controls.settings.clone();
+                if horizon_client::touch_ui::output_dismisses(&out) { crate::platform::hide(); }
+                continue;
+            }
+
             if self.menu.controls.editor.is_some() {
                 let captured = match &out {
                     Output::Text(t) => self.menu.controls.capture_custom_text(t),
@@ -1461,7 +1485,9 @@ impl Loading {
                 if let Some(ed) = self.menu.controls.editor.as_mut()
                     && std::mem::take(&mut ed.keyboard_request)
                 {
-                    let text = if ed.editing_save_desc {
+                    let text = if ed.editing_button_label {
+                        ed.button_label_input.clone()
+                    } else if ed.editing_save_desc {
                         ed.save_desc_input.clone()
                     } else {
                         ed.save_name_input.clone()

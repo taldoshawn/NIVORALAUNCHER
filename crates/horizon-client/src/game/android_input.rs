@@ -1220,17 +1220,7 @@ impl Game<'_> {
     }
 
     pub(super) fn android_poll_keyboard(&mut self) {
-        let requests = self.pad.touch.editor.as_mut().map(|ed| (
-            std::mem::take(&mut ed.import_pojav_requested), std::mem::take(&mut ed.export_pojav_requested)));
-        if let Some((import, export)) = requests {
-            let result = if import { crate::documents::begin_control_import(std::env::current_dir().unwrap_or_default()) }
-            else if export {
-                horizon_client::touch::pojav::export(&self.pad.touch.settings)
-                    .and_then(|value| serde_json::to_vec_pretty(&value).map_err(|e| e.to_string()))
-                    .and_then(|bytes| crate::documents::begin_control_export(std::env::current_dir().unwrap_or_default(), "pojav-controls.json".into(), bytes))
-            } else { Ok(()) };
-            if let Err(error) = result { if let Some(ed) = self.pad.touch.editor.as_mut() { ed.status_msg = Some(error); } }
-        }
+        super::startup_menu::control_documents(&mut self.pad.touch);
         self.android_custom_events();
         self.android_sync_pointer();
         if let Some(ed) = self.pad.touch.editor.as_mut()
@@ -1259,6 +1249,14 @@ impl Game<'_> {
             ));
         }
         for out in crate::platform::poll() {
+            if horizon_client::touch_ui::apply_editor_button_label_output(&mut self.pad.touch, &out) {
+                self.settings.touch = self.pad.touch.settings.clone();
+                if horizon_client::touch_ui::output_dismisses(&out) {
+                    crate::platform::hide();
+                }
+                continue;
+            }
+
             if self.pad.touch.editor.is_some() {
                 let captured = match &out {
                     Output::Text(t) => self.pad.touch.capture_custom_text(t),
@@ -1290,13 +1288,6 @@ impl Game<'_> {
                     self.android_custom_token_tap(&token);
                     continue;
                 }
-            }
-            if horizon_client::touch_ui::apply_editor_button_label_output(&mut self.pad.touch, &out) {
-                self.settings.touch = self.pad.touch.settings.clone();
-                if horizon_client::touch_ui::output_dismisses(&out) {
-                    crate::platform::hide();
-                }
-                continue;
             }
             if self.android_preset_typing(&out) {
                 continue;

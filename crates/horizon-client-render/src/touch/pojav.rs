@@ -57,7 +57,7 @@ pub fn export(settings:&Settings)->Result<Value,String>{
     let mut buttons=Vec::new();for b in &settings.custom_buttons {
         if b.drawer_id.is_some()||b.parent_drawer.is_some(){return Err("Drawer export is not supported".into())}
         let p=b.layouts[settings.mode.index()];let r=p.rect(854./480.);let mut keys=Vec::new();
-        for slot in 0..4 {let t=b.event_slot(slot);let code=(-5..=142).find(|c|token(*c).as_deref()==Some(t)).ok_or_else(||format!("No Pojav keycode for {t}"))?;keys.push(code);}
+        for slot in 0..4 {let t=b.event_slot(slot);let t=if t=="key.keyboard.unknown" { "" } else { t };let code=(-5..=142).find(|c|token(*c).as_deref()==Some(t)).ok_or_else(||format!("No Pojav keycode for {t}"))?;keys.push(code);}
         buttons.push(json!({"name":b.custom_label,"width":r[2]*854.,"height":r[3]*480.,"dynamicX":format!("${{screen_width}} * {}",r[0]),"dynamicY":format!("${{screen_height}} * {}",r[1]),"keycodes":keys,"bgColor":p.button_color as i32,"strokeColor":p.stroke_color as i32,"strokeWidth":p.stroke_size,"cornerRadius":p.roundness,"opacity":p.opacity,"isToggle":p.toggleable,"isSwipeable":p.swipeable,"passThruEnabled":p.passthrough,"displayInGame":p.visible_in_game,"displayInMenu":p.visible_in_menu}));
     }Ok(json!({"version":9,"scaledAt":100.,"mControlDataList":buttons,"mDrawerDataList":[],"mJoystickDataList":[]}))
 }
