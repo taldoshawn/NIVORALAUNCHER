@@ -312,7 +312,7 @@ pub fn apply_editor_button_label_output(
     if !ed.editing_button_label {
         return false;
     }
-    let max_len = 18;
+    let max_len = 128;
     match out {
         Output::Text(txt) => {
             for ch in txt.chars() {
@@ -362,7 +362,11 @@ pub fn apply_editor_button_label_output(
     } else if let Some(c) = sel_ctrl {
         tc.settings.control_labels[c as usize] = new_label;
     }
-    let _ = tc.settings.save();
+    if !tc.editor.as_ref().is_some_and(|ed| ed.editing_button_label) {
+        if let Err(error) = tc.settings.save() {
+            if let Some(ed) = tc.editor.as_mut() { ed.status_msg = Some(error.to_string()); }
+        }
+    }
     true
 }
 struct RelativeTouch {

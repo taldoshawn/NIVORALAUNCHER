@@ -23,6 +23,12 @@ pub struct CustomButton {
 }
 impl CustomButton {
     pub fn new(key: String, index: usize) -> Self {
+        let mut placement = Placement::new(
+            0.68 + (index % 3) as f32 * 0.1,
+            0.35 + (index / 3 % 3) as f32 * 0.12,
+            0.105,
+        );
+        placement.button_color = 0;
         Self {
             key,
             second_key: String::new(),
@@ -32,11 +38,7 @@ impl CustomButton {
             always_visible: false,
             drawer_id: None,
             parent_drawer: None,
-            layouts: [Placement::new(
-                0.68 + (index % 3) as f32 * 0.1,
-                0.35 + (index / 3 % 3) as f32 * 0.12,
-                0.105,
-            ); 3],
+            layouts: [placement; 3],
         }
     }
     pub fn valid_token(token: &str) -> bool {
