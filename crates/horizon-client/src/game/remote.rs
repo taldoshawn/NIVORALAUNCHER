@@ -8190,7 +8190,7 @@ impl Game<'_> {
         let speed = self
             .own_attribute("minecraft:attack_speed")
             .unwrap_or_else(|| self.main_hand_attack_speed());
-        let strength = self.hand_strength.scale(0.5, speed);
+        let strength = if self.options.legacy18 { 1.0 } else { self.hand_strength.scale(0.5, speed) };
         // Player.attack's damage: a riptide spin's, or this client's own
         // ATTACK_DAMAGE, which the held item and effects don't change here.
         let spin = self.player.as_ref().map_or(0.0, |p| p.auto_spin_attack_dmg);
