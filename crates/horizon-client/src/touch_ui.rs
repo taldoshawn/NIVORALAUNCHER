@@ -4868,7 +4868,7 @@ pub fn draw_hud_editor(
     }
 
     // 5. Draw Magnetic Snap Guides & 8 Interactive Corner/Edge Resize Handles around Selected Component
-    if let Some(([rx, ry, rw, rh], sel_name)) = selected_rect_and_title {
+    if let Some(([rx, ry, rw, rh], _sel_name)) = selected_rect_and_title {
         if tc.settings.snap_to_grid {
             let norm_c = [(rx + rw * 0.5) / w.max(1.0), (ry + rh * 0.5) / h.max(1.0)];
             let norm_s = [rw / w.max(1.0), rh / h.max(1.0)];
@@ -4895,23 +4895,9 @@ pub fn draw_hud_editor(
             ui.rounded(hx, hy, hw, hh, 3.0, accent);
             ui.border(hx, hy, hw, hh, 3.0, accent_fg);
         }
-        let tag = format!("{sel_name} (Drag corners/edges to resize)");
-        let tw = (ui.measure(Face::SemiBold, 9.5, &tag) + 12.0).min(w - 16.0);
-        let tx = (rx + (rw - tw) * 0.5).clamp(8.0, (w - tw - 8.0).max(8.0));
-        let ty = if ry > 24.0 {
-            ry - 20.0
-        } else {
-            (ry + rh + 5.0).min(h - 20.0)
-        };
-        ui.rounded(tx, ty, tw, 16.0, 5.0, bg_card);
-        ui.border(tx, ty, tw, 16.0, 5.0, accent);
-        ui.centered_fit(
-            Face::SemiBold,
-            9.0,
-            [tx + 3.0, ty, tw - 6.0, 16.0],
-            accent,
-            &tag,
-        );
+        let arrow = pojav_editor::properties_arrow([rx, ry, rw, rh], [w, h]);
+        ui.rounded(arrow[0], arrow[1], arrow[2], arrow[3], 3.0, bg_card);
+        ui.centered_fit(Face::SemiBold, 16.0, arrow, accent, "> ");
     }
 
     let pod_y: f32 = 0.0;
@@ -8401,6 +8387,13 @@ pub fn touch_hud_editor(
         if let Some(sel_p) = cur_sel_placement {
             let [nx, ny, nw, nh] = sel_p.rect(aspect);
             let [rx, ry, rw, rh] = [nx * w, ny * h, nw * w, nh * h];
+            if ed.selected_custom.is_some() && inside(pojav_editor::properties_arrow([rx, ry, rw, rh], [w, h])) {
+                ed.props_open = true;
+                ed.side_scroll = 0.0;
+                ed.active_drag = None;
+                tc.clicked = true;
+                return false;
+            }
             let handle_tests: [([f32; 4], u8); 8] = [
                 ([rx - 10.0, ry - 10.0, 18.0, 18.0], 2 | 8),
                 ([rx + rw - 8.0, ry - 10.0, 18.0, 18.0], 1 | 8),
@@ -8479,7 +8472,7 @@ pub fn touch_hud_editor(
     })();
 
     if !closed {
-        if tap_properties && ed.selected_custom.is_some() { ed.props_open = true; ed.side_scroll = 0.0; }
+        let _ = tap_properties;
         tc.editor = Some(ed);
     }
     closed

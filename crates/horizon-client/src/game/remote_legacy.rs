@@ -192,7 +192,10 @@ impl Game<'_> {
                 delta: [0.; 3],
                 yaw,
                 pitch,
-                relatives: i32::from(flags),
+                relatives: i32::from(flags)
+                    | if flags & 1 != 0 { play::relative::DELTA_X } else { 0 }
+                    | if flags & 2 != 0 { play::relative::DELTA_Y } else { 0 }
+                    | if flags & 4 != 0 { play::relative::DELTA_Z } else { 0 },
             }))?,
             Packet::Health {
                 health,
@@ -513,7 +516,7 @@ impl Game<'_> {
             0x0b => {
                 let entity = r.varint()?;
                 match r.u8()? {
-                    0 => C::SwingAnimation(play::SwingAnimation { id: entity, hand: 0, kind: 0, duration: 6 }),
+                    0 => C::SwingAnimation(play::SwingAnimation { id: entity, hand: 0, kind: 1, duration: 6 }),
                     1 => C::EntityEvent(play::EntityEvent { id: entity, event: 2 }),
                     2 => C::Animate(play::Animate { id: entity, action: 0 }),
                     4 => C::Animate(play::Animate { id: entity, action: 1 }),

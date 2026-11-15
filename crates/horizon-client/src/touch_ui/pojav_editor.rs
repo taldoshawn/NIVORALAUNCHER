@@ -5,6 +5,10 @@ use crate::ui_theme::{Face, Ui};
 const ROW: f32 = 48.0;
 const ROWS: usize = 22;
 const ROW_ORDER: [usize; ROWS] = [0, 1, 2, 5, 6, 7, 8, 14, 15, 16, 3, 4, 9, 10, 11, 12, 13, 17, 18, 19, 20, 21];
+pub(super) fn properties_arrow([x, y, w, h]: [f32; 4], viewport: [f32; 2]) -> [f32; 4] {
+    [(x + w + 12.0).clamp(0.0, (viewport[0] - 26.0).max(0.0)),
+     (y + h * 0.5 - 13.0).clamp(0.0, (viewport[1] - 26.0).max(0.0)), 26.0, 26.0]
+}
 fn geometry(w: f32, h: f32, center: f32) -> [f32; 4] {
     let width = (w * 0.42).clamp(220.0, 340.0).min(w);
     [if center < 0.5 { w - width } else { 0.0 }, 0.0, width, h]
@@ -185,6 +189,7 @@ pub(super) fn touch(
     let [x, _, width, h] = geometry(viewport[0], viewport[1], placement.center[0]);
     if started {
         if point[0] < x || point[0] > x + width || point[1] < 52.0 {
+            if let Err(error) = tc.settings.save() { ed.status_msg = Some(error.to_string()); }
             ed.props_open = false;
             ed.editing_button_label = false;
             ed.numeric_property = None;
