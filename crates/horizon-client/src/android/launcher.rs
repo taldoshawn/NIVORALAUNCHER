@@ -474,6 +474,25 @@ impl Launcher {
         if self.login.pending() {
             return Ok(());
         }
+        let accounts = crate::account::Accounts::load();
+        let offline_selected = accounts.offline_selected.as_deref().is_some_and(|name| {
+            crate::account::valid_offline_name(name)
+                && accounts.offline.iter().any(|saved| saved == name)
+        });
+        if accounts.selected().is_none() && !offline_selected {
+            self.login.refresh_status();
+            self.login.visible = true;
+            self.login.offline = false;
+            self.login.ely = false;
+            self.login.choosing = !self.login.saved_accounts.is_empty()
+                || !self.login.saved_offline.is_empty();
+            self.login.providers = !self.login.choosing;
+            self.catalog.status = "Add or select an account before playing.".into();
+            if let Some(window) = &self.window {
+                window.request_redraw();
+            }
+            return Ok(());
+        }
         crate::diagnostics::heartbeat(
             "play_requested",
             || serde_json::json!({"renderer":self.catalog.config.renderer.label(),"resolution_percent":self.catalog.config.render_scale.percent()}),

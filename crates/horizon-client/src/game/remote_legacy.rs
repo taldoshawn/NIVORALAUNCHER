@@ -571,6 +571,7 @@ impl Game<'_> {
                 let entity = r.varint()?;
                 let legacy_kind = r.u8()?;
                 let name = match legacy_kind {
+                    30 => "armor_stand",
                     50 => "creeper",
                     51 => "skeleton",
                     52 => "spider",
@@ -603,7 +604,10 @@ impl Game<'_> {
                     100 => "horse",
                     101 => "rabbit",
                     120 => "villager",
-                    _ => return Err("unknown legacy mob type".into()),
+                    _ => {
+                        log::warn!("Ignoring unknown 1.8.9 mob type {legacy_kind} (entity {entity})");
+                        return Ok(());
+                    }
                 };
                 let kind = self
                     .remote
