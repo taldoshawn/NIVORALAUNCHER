@@ -3784,6 +3784,25 @@ impl Game<'_> {
                 }
             }
             C::EntityEvent(p) => {
+                if self.options.legacy18 && p.event == 2 {
+                    let mut at = None;
+                    if self.remote.as_ref().is_some_and(|r| r.entity_id == p.id) {
+                        if let Some(player) = self.player.as_mut() {
+                            player.health.animate_hurt();
+                            at = Some([player.position.x, player.position.y, player.position.z]);
+                        }
+                    }
+                    if let Some(m) = self.mobs.iter_mut().find(|m| m.id == p.id as u32) {
+                        m.hurt_time = 10;
+                        at = Some([m.position.x, m.position.y, m.position.z]);
+                    }
+                    if let Some(at) = at {
+                        self.audio.play_on(
+                            horizon_client::settings::sound_source("minecraft:entity.player.hurt"),
+                            "minecraft:entity.player.hurt", Some(at), 1.0, 1.0,
+                        );
+                    }
+                }
                 if p.event == super::fireworks::FIREWORK_EXPLODE_EVENT {
                     self.remote_firework_explosion(p.id);
                 }
@@ -5910,6 +5929,9 @@ impl Game<'_> {
                 .level_players
                 .get(&(m.id as i32))
                 .and_then(|uuid| r.tab_players.get(uuid));
+            if self.options.legacy18 && r.level_players.contains_key(&(m.id as i32)) {
+                continue;
+            }
             let spectator = listed.is_some_and(|t| t.game_mode == SPECTATOR);
             let mob_team = match listed {
                 Some(t) => board.players_team(&t.name),
@@ -7557,6 +7579,10 @@ impl Game<'_> {
             yaw: self.yaw,
             pitch: self.pitch,
         }));
+        if self.options.legacy18 && held.item.ends_with("_sword") {
+            self.with_hand(hand, Game::start_using_item);
+            return true;
+        }
         let Some(info) = self.items().get(&held.item).cloned() else {
             return false;
         };
@@ -7882,7 +7908,8 @@ impl Game<'_> {
         }
         // A drawn bow, a charging crossbow, a raised shield...: held until
         // the button lets go.
-        if stack.as_ref().is_some_and(|s| self.held_until_released(s)) {
+        if stack.as_ref().is_some_and(|s| self.held_until_released(s)
+            || (self.options.legacy18 && s.item.ends_with("_sword"))) {
             self.using = in_hand.then_some((slot, ticks + 1));
             return;
         }

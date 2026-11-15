@@ -34,6 +34,7 @@ impl Game<'_> {
     pub(super) fn use_duration(&self, stack: &ItemStack) -> i32 {
         let info = self.items().get(&stack.item);
         let mut duration = match &*stack.item {
+            item if self.options.legacy18 && self.remote.is_some() && item.ends_with("_sword") => 72_000,
             "minecraft:bow" | "minecraft:crossbow" | "minecraft:trident" => 72_000,
             "minecraft:spyglass" => 1200,
             "minecraft:brush" => 200,
