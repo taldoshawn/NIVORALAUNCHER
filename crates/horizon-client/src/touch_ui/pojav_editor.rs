@@ -223,6 +223,8 @@ pub(super) fn touch(
     let row = ROW_ORDER[display_row];
     super::push_undo_snapshot(ed, &tc.settings);
     if row == 0 || numeric_row(row).is_some() {
+        ed.key_picker = false;
+        ed.picker_step = PickerStep::None;
         ed.numeric_property = numeric_row(row);
         ed.property_viewport = viewport;
         ed.button_label_input = if let Some(field) = ed.numeric_property {
@@ -339,7 +341,7 @@ pub(super) fn touch_context(
             ed.selected = Some(crate::touch::Control::Move);
             ed.props_open = true;
         }
-        3 => ed.menu_open = true,
+        3 => ed.import_pojav_requested = true,
         4 => {
             ed.save_dialog_open = true;
             ed.save_name_input = if tc.settings.is_default_preset() {
@@ -361,15 +363,7 @@ pub(super) fn touch_context(
             ed.selected = None;
         }
         6 => {
-            let result = serde_json::to_vec_pretty(&tc.settings)
-                .map_err(|e| e.to_string())
-                .and_then(|bytes| {
-                    std::fs::write("pojav-controls-export.json", bytes).map_err(|e| e.to_string())
-                });
-            ed.status_msg = Some(match result {
-                Ok(()) => "Exportado: pojav-controls-export.json na pasta do jogo".into(),
-                Err(e) => e,
-            });
+            ed.export_pojav_requested = true;
         }
         _ => {}
     }

@@ -46,6 +46,8 @@ pub enum PickerStep {
 
 pub struct Editor {
     pub classic_context: bool,
+    pub import_pojav_requested: bool,
+    pub export_pojav_requested: bool,
     pub canvas_origin: Option<[f32; 2]>,
     /// Scroll and text entry state for the Pojav button side panel.
     pub side_scroll: f32,
@@ -126,6 +128,8 @@ impl TouchControls {
         let is_default = self.settings.is_default_preset();
         self.editor = Some(Editor {
             classic_context: false,
+            import_pojav_requested: false,
+            export_pojav_requested: false,
             canvas_origin: None,
             side_scroll: 0.0,
             key_list_scroll: 0.0,
@@ -853,7 +857,7 @@ impl TouchControls {
         }
         let is_mcpe = self.settings.control_style == ControlStyle::Mcpe;
         if let Some(e) = &mut self.editor
-            && (e.key_picker || e.picker_step != PickerStep::None)
+            && !e.editing_button_label && (e.key_picker || e.picker_step != PickerStep::None)
             && let Some(i) = e.selected_custom
             && let Some(btn) = self.settings.custom_buttons.get_mut(i)
         {

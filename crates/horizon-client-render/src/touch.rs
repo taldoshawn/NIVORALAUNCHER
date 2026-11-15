@@ -32,6 +32,7 @@ pub mod custom;
 pub mod editor;
 pub mod drawer;
 pub mod property_input;
+pub mod pojav;
 pub use custom::CustomButton;
 pub use editor::{Editor, EditorDragKind, PickerStep};
 pub mod layout;

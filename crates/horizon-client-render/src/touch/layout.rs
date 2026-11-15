@@ -1573,8 +1573,10 @@ impl Settings {
     ) -> std::result::Result<PresetMeta, String> {
         let value: serde_json::Value = serde_json::from_slice(bytes)
             .map_err(|e| format!("Invalid control JSON file: {e}"))?;
-        let mut parsed: Self = serde_json::from_value(value.clone())
-            .map_err(|e| format!("Unrecognized control preset format: {e}"))?;
+        let mut parsed: Self = if value.get("mControlDataList").is_some() || value.is_string() {
+            super::pojav::import(&value)?
+        } else { serde_json::from_value(value.clone())
+            .map_err(|e| format!("Unrecognized control preset format: {e}"))? };
         let style = Self::detect_control_style(&value, &parsed);
         Self::ensure_system_storage(game_home, style);
 
