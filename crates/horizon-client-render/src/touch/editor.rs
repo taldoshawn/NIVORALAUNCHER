@@ -6,11 +6,9 @@ pub enum EditorDragKind {
         offset: [f32; 2],
     },
     Resize {
-        mask: u8,
         start_pos: [f32; 2],
-        start_size: f32,
-        start_wr: f32,
-        start_hr: f32,
+        original: Placement,
+        moved: bool,
     },
     FloatingPod {
         offset: [f32; 2],
@@ -25,6 +23,23 @@ pub enum EditorDragKind {
         index: usize,
         rect: [f32; 4],
     },
+}
+
+/// One bottom-right handle, in the same coordinate space as the editor canvas.
+pub fn resize_handle([x, y, w, h]: [f32; 4], viewport: [f32; 2]) -> [f32; 4] {
+    [(x + w - 2.0).clamp(0.0, (viewport[0] - 24.0).max(0.0)),
+     (y + h - 2.0).clamp(0.0, (viewport[1] - 24.0).max(0.0)), 24.0, 24.0]
+}
+
+/// Preserve the opposite corner and change only the axis the finger moves on.
+pub fn resize_placement(original: Placement, delta: [f32; 2], aspect: f32) -> Placement {
+    let mut next = original;
+    let [left, top, _, _] = original.rect(aspect);
+    next.width_ratio = (original.width_ratio + delta[0] * aspect / original.size).clamp(0.4, 3.2);
+    next.height_ratio = (original.height_ratio + delta[1] / original.size).clamp(0.4, 3.2);
+    let [_, _, width, height] = next.rect(aspect);
+    next.center = [left + width * 0.5, top + height * 0.5];
+    next
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -103,6 +118,8 @@ pub struct Editor {
     pub save_dialog_open: bool,
     /// A naming field was tapped: the game opens the system keyboard.
     pub keyboard_request: bool,
+    /// Close the IME after its queued text has been applied to the field.
+    pub keyboard_finish_requested: bool,
     /// True when Option B (Create a new preset as...) is selected in the Save Dialog.
     pub save_create_new_mode: bool,
     /// True when the Back confirmation dialog (`[ Save ]` / `[ Back ]`) is open.
@@ -174,6 +191,7 @@ impl TouchControls {
             editing_save_desc: false,
             save_dialog_open: false,
             keyboard_request: false,
+            keyboard_finish_requested: false,
             save_create_new_mode: is_default,
             back_confirm_open: false,
             duplicate_name_confirm_open: false,

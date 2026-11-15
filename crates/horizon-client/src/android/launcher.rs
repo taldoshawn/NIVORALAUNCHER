@@ -87,19 +87,12 @@ impl Launcher {
     }
 
     fn edit_text(&mut self, output: horizon_client::osk::Output) {
-        if let Some(tc) = &mut self.control_editor
-            && horizon_client::touch_ui::apply_editor_or_preset_output(
-                tc.editor.as_mut(),
-                None,
-                &output,
-            )
-        {
+        if let Some(tc) = &mut self.control_editor {
             let game_home = self.catalog.config.game_home(&self.home);
-            let _ = tc.settings.save_to(&game_home.join("horizon-touch.json"));
-            if horizon_client::touch_ui::output_dismisses(&output) {
-                crate::platform::hide();
+            if horizon_client::touch_ui::apply_control_editor_output(tc, &output, &game_home) {
+                if horizon_client::touch_ui::output_dismisses(&output) { crate::platform::hide(); }
+                return;
             }
-            return;
         }
         if self.login.edit(self.catalog.editing, &output) {
             if matches!(
@@ -405,6 +398,10 @@ impl Launcher {
 
     fn request_back(&mut self) {
         if crate::platform::active() && self.control_editor.is_some() {
+            if let Some(tc) = &mut self.control_editor {
+                let game_home = self.catalog.config.game_home(&self.home);
+                horizon_client::touch_ui::apply_control_editor_output(tc, &horizon_client::osk::Output::Close, &game_home);
+            }
             crate::platform::hide();
             return;
         }
@@ -921,22 +918,35 @@ impl ApplicationHandler for Launcher {
                 }
             }
         }
-        if let Some(tc) = &mut self.control_editor
-            && let Some(ed) = &mut tc.editor
-            && std::mem::take(&mut ed.keyboard_request)
-        {
-            let text = if ed.editing_save_desc {
-                ed.save_desc_input.clone()
-            } else {
-                ed.save_name_input.clone()
-            };
-            crate::platform::show(&text);
+        if let Some(tc) = &mut self.control_editor {
+            if let Some(text) = horizon_client::touch_ui::take_control_editor_keyboard_text(tc) {
+                crate::platform::show(&text);
+            }
+            let game_home = self.catalog.config.game_home(&self.home);
+            let requests = tc.editor.as_mut().map(|ed| (
+                std::mem::take(&mut ed.import_pojav_requested),
+                std::mem::take(&mut ed.export_pojav_requested),
+            ));
+            if let Some((import, export)) = requests {
+                let result = if import { crate::documents::begin_control_import(game_home.clone()) }
+                else if export {
+                    horizon_client::touch::pojav::export(&tc.settings)
+                        .and_then(|value| serde_json::to_vec_pretty(&value).map_err(|e| e.to_string()))
+                        .and_then(|bytes| crate::documents::begin_control_export(game_home.clone(), "pojav-controls.json".into(), bytes))
+                } else { Ok(()) };
+                if let Err(error) = result { if let Some(ed) = tc.editor.as_mut() { ed.status_msg = Some(error); } }
+            }
         }
         for out in crate::platform::poll() {
             if matches!(out, horizon_client::osk::Output::Enter) {
                 crate::platform::hide();
             }
             self.edit_text(out);
+        }
+        if let Some(tc) = &mut self.control_editor {
+            if horizon_client::touch_ui::finish_control_editor_keyboard(tc, &self.catalog.config.game_home(&self.home)) {
+                crate::platform::hide();
+            }
         }
         if let Some(audio) = &mut self.audio {
             audio.tick(false, &Default::default());

@@ -1223,16 +1223,7 @@ impl Game<'_> {
         super::startup_menu::control_documents(&mut self.pad.touch);
         self.android_custom_events();
         self.android_sync_pointer();
-        if let Some(ed) = self.pad.touch.editor.as_mut()
-            && std::mem::take(&mut ed.keyboard_request)
-        {
-            let text = if ed.editing_button_label {
-                ed.button_label_input.clone()
-            } else if ed.editing_save_desc {
-                ed.save_desc_input.clone()
-            } else {
-                ed.save_name_input.clone()
-            };
+        if let Some(text) = horizon_client::touch_ui::take_control_editor_keyboard_text(&mut self.pad.touch) {
             crate::platform::show(&text);
         }
         if let Some(notice) = crate::documents::poll() {
@@ -1301,6 +1292,10 @@ impl Game<'_> {
             } else if next_sign_line {
                 self.android_show_keyboard();
             }
+        }
+        if horizon_client::touch_ui::finish_control_editor_keyboard(&mut self.pad.touch, std::path::Path::new(".")) {
+            self.settings.touch = self.pad.touch.settings.clone();
+            crate::platform::hide();
         }
         // Title screens also use Playing: their focused text fields must keep
         // the IME until the user confirms or closes the editor.

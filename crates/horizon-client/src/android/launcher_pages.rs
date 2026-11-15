@@ -8102,14 +8102,7 @@ impl Launcher {
                     t.phase == TouchPhase::Started,
                     ended,
                 );
-                if let Some(ed) = &mut tc.editor
-                    && std::mem::take(&mut ed.keyboard_request)
-                {
-                    let text = if ed.editing_save_desc {
-                        ed.save_desc_input.clone()
-                    } else {
-                        ed.save_name_input.clone()
-                    };
+                if let Some(text) = horizon_client::touch_ui::take_control_editor_keyboard_text(tc) {
                     crate::platform::show(&text);
                 }
                 if ended || closed {
@@ -8207,10 +8200,13 @@ impl Launcher {
             .control_editor
             .as_ref()
             .and_then(|tc| tc.editor.as_ref())
-            .is_some_and(|ed| ed.save_dialog_open);
+            .is_some_and(|ed| ed.save_dialog_open || ed.editing_button_label);
         if self.catalog.editing.is_none() && !editor_typing {
             return;
         }
+        // EditText owns physical keys too while its IME session is active.
+        // The complete buffer reaches the field once through platform::poll.
+        if editor_typing && crate::platform::active() { return; }
         let out = match key.physical_key {
             PhysicalKey::Code(KeyCode::Backspace) => Some(Output::Backspace),
             PhysicalKey::Code(KeyCode::Enter) => {

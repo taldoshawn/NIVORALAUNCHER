@@ -828,16 +828,7 @@ impl Loading {
     pub(super) fn menu_android_keyboard(&mut self) {
         control_documents(&mut self.menu.controls);
         use horizon_client::osk::Output;
-        if let Some(ed) = self.menu.controls.editor.as_mut()
-            && std::mem::take(&mut ed.keyboard_request)
-        {
-            let text = if ed.editing_button_label {
-                        ed.button_label_input.clone()
-                    } else if ed.editing_save_desc {
-                ed.save_desc_input.clone()
-            } else {
-                ed.save_name_input.clone()
-            };
+        if let Some(text) = horizon_client::touch_ui::take_control_editor_keyboard_text(&mut self.menu.controls) {
             crate::platform::show(&text);
         }
         if let Some(notice) = crate::documents::poll() {
@@ -936,6 +927,10 @@ impl Loading {
                 Output::Key(_) => {}
             }
             self.save_menu_address();
+        }
+        if horizon_client::touch_ui::finish_control_editor_keyboard(&mut self.menu.controls, std::path::Path::new(".")) {
+            self.settings.touch = self.menu.controls.settings.clone();
+            crate::platform::hide();
         }
     }
     #[cfg(target_os = "android")]
@@ -1482,16 +1477,7 @@ impl Loading {
                         ended,
                     );
                 }
-                if let Some(ed) = self.menu.controls.editor.as_mut()
-                    && std::mem::take(&mut ed.keyboard_request)
-                {
-                    let text = if ed.editing_button_label {
-                        ed.button_label_input.clone()
-                    } else if ed.editing_save_desc {
-                        ed.save_desc_input.clone()
-                    } else {
-                        ed.save_name_input.clone()
-                    };
+                if let Some(text) = horizon_client::touch_ui::take_control_editor_keyboard_text(&mut self.menu.controls) {
                     crate::platform::show(&text);
                 }
                 if self.menu.controls.editor.is_none() {
