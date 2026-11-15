@@ -41,7 +41,7 @@ pub(super) fn draw(tc: &TouchControls, ed: &Editor, ui: &mut Ui) {
     let p = tc.custom_placement(index);
     let [x, _, width, h] = geometry(ui.w, ui.h, p.center[0]);
     let theme = crate::ui_theme::active_theme();
-    ui.fill(x, 0.0, width, h, theme.bg_solid);
+    ui.rounded(x, 0.0, width, h, 10.0, crate::hud::rgba(20, 20, 20, 250));
     ui.text(
         Face::SemiBold,
         16.0,
@@ -75,8 +75,8 @@ pub(super) fn draw(tc: &TouchControls, ed: &Editor, ui: &mut Ui) {
         "Cor do botão (AARRGGBB)",
         "Cor da borda (AARRGGBB)",
         "Alternável (desligado: segurar)",
-        "Passar toque para câmera",
-        "Ativar ao deslizar",
+        "Mouse pode atravessar",
+        "Deslizável",
         "Mostrar no jogo",
         "Mostrar nos menus",
         "Excluir botão",
@@ -128,9 +128,18 @@ pub(super) fn draw(tc: &TouchControls, ed: &Editor, ui: &mut Ui) {
             }
             .into()
         };
+        if (14..=18).contains(&row) {
+            let on = [p.toggleable, p.passthrough, p.swipeable, p.visible_in_game, p.visible_in_menu][row - 14];
+            ui.text(Face::Regular, 14.0, x + 14.0, y + 14.0, u32::MAX, label);
+            let track_x = x + width - 50.0;
+            let track_color = if on { crate::hud::rgba(128, 203, 196, 255) } else { crate::hud::rgba(92, 92, 92, 255) };
+            ui.rounded(track_x, y + 16.0, 36.0, 18.0, 9.0, track_color);
+            ui.rounded(track_x + if on { 18.0 } else { 0.0 }, y + 14.0, 22.0, 22.0, 11.0, if on { crate::hud::rgba(128, 203, 196, 255) } else { crate::hud::rgba(190, 190, 190, 255) });
+            continue;
+        }
         ui.text(
             Face::Regular,
-            10.5,
+            12.0,
             x + 14.0,
             y + 3.0,
             theme.text_muted,
@@ -138,7 +147,7 @@ pub(super) fn draw(tc: &TouchControls, ed: &Editor, ui: &mut Ui) {
         );
         ui.text_clipped(
             Face::Medium,
-            13.0,
+            15.0,
             x + 14.0,
             y + 20.0,
             width - 28.0,

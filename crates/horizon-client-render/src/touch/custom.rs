@@ -833,6 +833,21 @@ mod tests {
     }
 
     #[test]
+    fn default_movement_slides_between_directions_without_lifting() {
+        let mut t = TouchControls::default();
+        t.viewport(1920, 1080);
+        t.settings = layout::Settings::default_pojav();
+        t.update(1, [0.10, 0.69], true, false);
+        assert_eq!(t.key_events(), [("key.keyboard.w".into(), true)]);
+        t.update(1, [0.04, 0.81], false, false);
+        let events = t.key_events();
+        assert!(events.contains(&("key.keyboard.w".into(), false)));
+        assert!(events.contains(&("key.keyboard.a".into(), true)));
+        t.update(1, [0.04, 0.81], false, true);
+        assert_eq!(t.key_events(), [("key.keyboard.a".into(), false)]);
+    }
+
+    #[test]
     fn swipe_through_buttons_triggers_each_button_in_sequence_and_zero_opacity_goy_works() {
         let mut t = TouchControls::default();
         t.viewport(1920, 1080);
