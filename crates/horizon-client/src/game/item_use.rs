@@ -24,6 +24,9 @@ impl Game<'_> {
         if canceled {
             return false;
         }
+        if let Some(remote) = self.remote.as_mut() {
+            remote.use_item = Some(stack.item.clone());
+        }
         self.using = Some((self.held_slot(), 0));
         self.use_duration = duration;
         true

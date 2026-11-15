@@ -1,5 +1,5 @@
 name: Android APK
-run-name: Pojav Rust APK · ${{ github.sha }}
+run-name: NIVORA LAUNCHER APK · ${{ github.sha }}
 
 on:
   push:
@@ -115,7 +115,7 @@ jobs:
           CARGO_PROFILE_TEST_DEBUG=0 cargo test -p horizon-client-render --lib touch::custom::tests --locked
           CARGO_PROFILE_TEST_DEBUG=0 cargo test -p horizon-client-render --lib touch::property_input::tests --locked
           CARGO_PROFILE_TEST_DEBUG=0 cargo test -p horizon-client-render --lib touch::pojav::tests --locked
-          CARGO_PROFILE_TEST_DEBUG=0 cargo test -p horizon-client --test hud_editor --locked
+          CARGO_PROFILE_TEST_DEBUG=0 cargo test -p horizon-client --test hud_editor --test legacy_rules --locked
           CARGO_PROFILE_TEST_DEBUG=0 cargo test -p horizon-client --example legacy_login_probe --locked
       - name: Restore this fork's signing identity
         env:
@@ -163,7 +163,7 @@ jobs:
           from pathlib import Path
           out = Path('dist'); out.mkdir(exist_ok=True)
           abi, commit = os.environ['ABI'], os.environ['GITHUB_SHA']
-          name = f'Pojav-Rust-{os.environ["GITHUB_RUN_NUMBER"]}-{commit[:12]}-{abi}.apk'
+          name = f'Nivora-Launcher-{os.environ["GITHUB_RUN_NUMBER"]}-{commit[:12]}-{abi}.apk'
           apk = out / name
           shutil.copyfile(Path('.local/android/apk') / abi / 'horizon-android-public.apk', apk)
           digest = hashlib.sha256(apk.read_bytes()).hexdigest()

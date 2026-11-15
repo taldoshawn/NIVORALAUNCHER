@@ -1,11 +1,11 @@
-# Pojav Rust para Android
+# NIVORA LAUNCHER para Android
 
 Cliente nativo em Rust baseado no [Horizon Android](https://github.com/GoyDevv/Horizon-Android), com renderização Vulkan/OpenGL ES e multiplayer Java.
 O motor do jogo executa em Rust, sem uma JVM executando Minecraft no celular. A integração com o Android mantém uma pequena ponte Java da Activity; ferramentas Java também participam da compilação e preparação de recursos.
 
 ## APK
 
-Baixe os APKs assinados na [release experimental](https://github.com/taldoshawn/pojav/releases/tag/v0.1.0-alpha.3). Os builds intermediários ficam em **Actions → Android APK → Artifacts**; eles usam outro certificado e não substituem a release por atualização direta.
+Baixe os APKs assinados na [release experimental](https://github.com/taldoshawn/NIVORALAUNCHER/releases/tag/v0.1.0-alpha.3). Os builds intermediários ficam em **Actions → Android APK → Artifacts**; eles usam outro certificado e não substituem a release por atualização direta.
 ARM64 é a arquitetura dos celulares atuais. As variantes ARMv7 e x86 de 32 bits são experimentais.
 
 - ARM64 / x86_64: Android 9 (API 28) ou superior.
@@ -18,7 +18,7 @@ ARM64 é a arquitetura dos celulares atuais. As variantes ARMv7 e x86 de 32 bits
 
 O motor existente tem como alvo **26.3, protocolo 777**. A camada de rede
 **1.8–1.8.9, protocolo 47**, está integrada ao jogo e é experimental.
-O [teste do APK nº 21](https://github.com/taldoshawn/pojav/actions/runs/43623654873)
+O [teste do APK nº 21](https://github.com/taldoshawn/NIVORALAUNCHER/actions/runs/43623654873)
 instalou a variante x86_64 no emulador Android 15, abriu as seis páginas principais,
 importou um resource pack da pasta externa e confirmou movimento, quebra,
 colocação e um ataque contra outro cliente de teste em um servidor Cuberite local.
@@ -26,8 +26,8 @@ Isso não comprova combate completo, servidores públicos, desempenho em um celu
 físico nem compatibilidade universal. Forge, OptiFine e singleplayer 1.8.9 não
 estão implementados.
 
-A release inclui [documentação e exemplos](https://github.com/taldoshawn/pojav/releases/download/v0.1.0-alpha.3/Pojav-Rust-Documentacao-e-Exemplos.zip)
-e [capturas reais do APK](https://github.com/taldoshawn/pojav/releases/download/v0.1.0-alpha.3/Pojav-Rust-Capturas-do-APK.zip).
+A release inclui [documentação e exemplos](https://github.com/taldoshawn/NIVORALAUNCHER/releases/download/v0.1.0-alpha.3/Pojav-Rust-Documentacao-e-Exemplos.zip)
+e [capturas reais do APK](https://github.com/taldoshawn/NIVORALAUNCHER/releases/download/v0.1.0-alpha.3/Pojav-Rust-Capturas-do-APK.zip).
 Consulte as [pastas de conteúdo](docs/android-content-folders.md),
 a [documentação de desenvolvimento](docs/pojav-development.md),
 o [estado do protocolo legado](docs/legacy-protocol.md) e a

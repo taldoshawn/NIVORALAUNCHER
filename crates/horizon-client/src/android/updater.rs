@@ -9,7 +9,7 @@ use std::{
 };
 
 pub const CURRENT_VERSION: &str = "0.1.0";
-pub const REPO: &str = "taldoshawn/pojav";
+pub const REPO: &str = "taldoshawn/NIVORALAUNCHER";
 
 fn device_abi() -> &'static str {
     match std::env::consts::ARCH {

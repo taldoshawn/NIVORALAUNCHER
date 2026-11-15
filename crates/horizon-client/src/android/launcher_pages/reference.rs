@@ -136,7 +136,7 @@ impl Launcher {
             103.0 * s,
             29.0 * s,
             WHITE,
-            "Pojav Rust",
+            "NIVORA LAUNCHER",
         );
         ui.text(
             Face::Regular,
