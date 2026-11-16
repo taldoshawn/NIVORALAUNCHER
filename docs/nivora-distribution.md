@@ -10,7 +10,7 @@ The in-app release downloader accepts only official HTTPS GitHub release asset U
 
 The existing Android APK workflow can build ARM64, ARMv7, x86 and x86_64 separately, or additionally assemble one universal APK with `universal=true`. The universal run uses Android API 28 as a common floor. It deliberately contains real native libraries for all four architectures. A single-architecture APK is still preferable when download size matters.
 
-The assembler requires byte-identical shared code/assets/manifests, verifies each ELF architecture, rejects duplicate/missing ABIs and shared-payload conflicts, strips old APK signatures, and writes a new unsigned APK. The workflow aligns it, signs it and performs the same public payload audit. It records SHA-256, commit, byte count and signing mode. A conflict fails assembly rather than choosing an arbitrary shared file.
+The assembler requires byte-identical shared code/manifests and non-engine assets. Engine packs must contain identical data after accounting for JSON key order, tag-set iteration order, lambda diagnostic addresses and ZIP metadata. Item order, registry IDs and gameplay values cannot change. Retained manifest hashes are validated and an original, unmodified resource pack is preserved. It verifies each ELF architecture, rejects duplicate/missing ABIs and real shared-payload conflicts, strips old APK signatures, and writes a new unsigned APK. The workflow aligns it, signs it and performs the same public payload audit. It records SHA-256, commit, byte count and signing mode. A conflict fails assembly rather than choosing an arbitrary shared file.
 
 No padding, unused SDK or game resource is added to reach a size target. Universal APK size is measured after assembly; exceeding 100 MB is not a release gate or a compatibility claim. Existing wgpu, winit, Rust TLS, image decoding and SHA-256 libraries provide the actual graphics/input/network/verification functionality.
 
@@ -19,3 +19,7 @@ No padding, unused SDK or game resource is added to reach a size target. Univers
 The workflow uses the repository's permanent signing secrets if configured. Without them, artifacts have a temporary development signature and still require official offline signing before use because startup certificate verification is enabled. This work does not create a new signing identity or change the expected permanent certificate. Never publish the private keystore or passwords.
 
 Local regressions cover valid and tampered/truncated/oversized APK streams, interrupted reads, storage write failures, metadata origin/path/digest validation, universal merging, conflicting shared payloads, missing/duplicate ABIs and wrong ELF architecture. Payload audit tests also run. Full APK compilation runs in Actions. No phone benchmark, FPS gain or visual/runtime compatibility is inferred from these tests.
+
+## Reuse successful native builds
+
+If only universal packaging failed, dispatch with `universal=true` and `universal_source_run_id` pointing to the earlier run. The packaging job verifies the source workflow, repository and four successful architecture jobs; it checks artifact hashes and records the original source commit separately from the assembly tooling commit. Native compilation is skipped. This is not a new build of the game code.

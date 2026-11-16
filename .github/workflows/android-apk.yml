@@ -15,6 +15,10 @@ on:
         description: Also assemble one APK with all four architectures (Android 9+)
         type: boolean
         default: false
+      universal_source_run_id:
+        description: Optional existing run with four successful architecture builds; only rerun universal packaging
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -25,7 +29,7 @@ concurrency:
 
 jobs:
   build:
-    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    if: (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') && (github.event_name != 'workflow_dispatch' || inputs.universal_source_run_id == '')
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     strategy:
@@ -208,8 +212,11 @@ jobs:
         run: rm -f .local/android/ci.keystore .local/android/debug.keystore
 
   universal:
-    if: github.event_name == 'workflow_dispatch' && inputs.universal
+    if: always() && github.event_name == 'workflow_dispatch' && inputs.universal && (needs.build.result == 'success' || (needs.build.result == 'skipped' && inputs.universal_source_run_id != ''))
     needs: build
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -219,7 +226,32 @@ jobs:
       - name: Download the four APKs of this exact run
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --dir artifacts
+          REUSED_RUN_ID: ${{ inputs.universal_source_run_id }}
+        run: |
+          source_run="${REUSED_RUN_ID:-$GITHUB_RUN_ID}"
+          [[ "$source_run" =~ ^[0-9]+$ ]]
+          if [[ -n "$REUSED_RUN_ID" ]]; then
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$source_run" > source-run.json
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$source_run/jobs?per_page=100" > source-jobs.json
+            python3 - <<'PYCODE'
+          import json, os
+          from pathlib import Path
+          run = json.loads(Path('source-run.json').read_text())
+          assert run['repository']['full_name'] == os.environ['GITHUB_REPOSITORY']
+          assert run['path'] == '.github/workflows/android-apk.yml'
+          assert run['status'] == 'completed'
+          jobs = json.loads(Path('source-jobs.json').read_text())['jobs']
+          expected = {f'build ({abi})' for abi in ('arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64')}
+          assert {j['name'] for j in jobs if j['conclusion'] == 'success'} >= expected
+          commit = run['head_sha']
+          assert len(commit) == 40 and all(c in '0123456789abcdef' for c in commit)
+          with open(os.environ['GITHUB_ENV'], 'a') as out:
+              out.write(f'APK_SOURCE_COMMIT={commit}\n')
+          PYCODE
+          fi
+          gh run download "$source_run" --repo "$GITHUB_REPOSITORY" --pattern 'pojav-rust-*' --dir artifacts
+      - name: Install pinned Android signing and alignment tools
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "build-tools;35.0.0"'
       - name: Assemble, align, sign and audit universal APK
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -235,7 +267,7 @@ jobs:
           sources = sorted(Path('artifacts').rglob('*.apk'))
           for source in sources:
               m = json.loads((source.parent / 'BUILD.json').read_text())
-              assert m['commit'] == os.environ['GITHUB_SHA']
+              assert m['commit'] == os.environ.get('APK_SOURCE_COMMIT', os.environ['GITHUB_SHA'])
               assert hashlib.sha256(source.read_bytes()).hexdigest() == m['sha256']
           Path('dist').mkdir()
           assemble(sources, Path('universal-unsigned.apk'))
@@ -262,7 +294,7 @@ jobs:
           (apk.parent/'audit.json').write_text(json.dumps(report, indent=2))
           digest = hashlib.sha256(apk.read_bytes()).hexdigest()
           (apk.parent/'SHA256SUMS.txt').write_text(f'{digest}  {apk.name}\n')
-          (apk.parent/'BUILD.json').write_text(json.dumps({'commit':os.environ['GITHUB_SHA'], 'abi':'universal', 'min_sdk':28, 'bytes':apk.stat().st_size, 'sha256':digest, 'signing':'repository-key' if configured else 'ephemeral-development', 'requires_official_resigning':not configured, 'device_tested':False}, indent=2))
+          (apk.parent/'BUILD.json').write_text(json.dumps({'commit':os.environ.get('APK_SOURCE_COMMIT', os.environ['GITHUB_SHA']), 'assembly_commit':os.environ['GITHUB_SHA'], 'abi':'universal', 'min_sdk':28, 'bytes':apk.stat().st_size, 'sha256':digest, 'signing':'repository-key' if configured else 'ephemeral-development', 'requires_official_resigning':not configured, 'device_tested':False}, indent=2))
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
               f.write(f'Universal APK: {apk.stat().st_size / 1024**2:.1f} MiB. Android 9+. Contains ARM64, ARMv7, x86 and x86_64. '+('Repository signing key.' if configured else 'Development signature: must be resigned with the official key before use; startup certificate verification remains enabled.'))
           PYCODE
