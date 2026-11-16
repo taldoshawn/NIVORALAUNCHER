@@ -362,6 +362,18 @@ impl Launcher {
             WHITE,
         );
         self.targets.push((choose, Action::GameVersion));
+        let notice = crate::updater::public_notice();
+        if !notice.is_empty() {
+            ui.text_clipped(
+                Face::Medium,
+                13.0 * s,
+                x + 8.0 * s,
+                376.0 * s,
+                (w - 16.0 * s).max(1.0),
+                WHITE,
+                &format!("Comunicado: {notice}"),
+            );
+        }
         let gap = 24.0 * s;
         let cw = (w - gap * 2.0) / 3.0;
         for (i, (name, icon, page, kind)) in [

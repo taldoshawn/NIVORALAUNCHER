@@ -65,6 +65,38 @@ pub enum UpdateStatus {
     Dismissed,
 }
 
+static PUBLIC_NOTICE: Mutex<String> = Mutex::new(String::new());
+
+pub fn public_notice() -> String {
+    PUBLIC_NOTICE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+}
+
+fn read_community_notice(value: &Value) -> String {
+    value["communityNotice"]
+        .as_str()
+        .unwrap_or("")
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(1500)
+        .collect()
+}
+
+fn check_community_notice() {
+    let result = (|| -> Result<Value, String> {
+        let response = ureq::get("https://nivora-launcher.vercel.app/api/app-policy")
+            .timeout(std::time::Duration::from_secs(5))
+            .call()
+            .map_err(|e| e.to_string())?;
+        serde_json::from_reader(response.into_reader().take(16384)).map_err(|e| e.to_string())
+    })();
+    if let Ok(value) = result {
+        *PUBLIC_NOTICE.lock().unwrap_or_else(|e| e.into_inner()) = read_community_notice(&value);
+    }
+}
+
 static STATUS: Mutex<Option<UpdateStatus>> = Mutex::new(None);
 static CHECKING: AtomicBool = AtomicBool::new(false);
 static DOWNLOADING: AtomicBool = AtomicBool::new(false);
@@ -249,6 +281,7 @@ pub fn check_in_background() {
     let worker = std::thread::Builder::new()
         .name("UpdateChecker".into())
         .spawn(|| {
+            check_community_notice();
             match check_for_update() {
                 Ok(Some(info)) => {
                     log::info!("New update available: {}", info.version);
@@ -529,5 +562,30 @@ mod integrity_tests {
         assert!(copy_verified(&mut Broken, &mut Vec::new(), 3, &expected, |_| {}).is_err());
         let mut full = &mut [0u8; 1][..];
         assert!(copy_verified(&mut Cursor::new(b"abc"), &mut full, 3, &expected, |_| {}).is_err());
+    }
+}
+
+#[cfg(test)]
+mod notice_tests {
+    use super::*;
+    #[test]
+    fn notice_does_not_require_a_newer_version_and_is_bounded_plain_text() {
+        let policy = serde_json::json!({"latestVersionCode":0,"minimumVersionCode":0,"communityNotice":"Lançamento hoje?"});
+        assert_eq!(read_community_notice(&policy), "Lançamento hoje?");
+        assert_eq!(read_community_notice(&serde_json::json!({})), "");
+        assert_eq!(
+            read_community_notice(&serde_json::json!({"communityNotice":false})),
+            ""
+        );
+        assert_eq!(
+            read_community_notice(&serde_json::json!({"communityNotice":"a\nb\u{0000}c"})),
+            "abc"
+        );
+        assert_eq!(
+            read_community_notice(&serde_json::json!({"communityNotice":"á".repeat(1600)}))
+                .chars()
+                .count(),
+            1500
+        );
     }
 }
