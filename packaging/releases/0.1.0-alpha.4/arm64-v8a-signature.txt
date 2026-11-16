@@ -1,0 +1,17 @@
+Verifies
+Verified using v1 scheme (JAR signing): false
+Verified using v2 scheme (APK Signature Scheme v2): false
+Verified using v3 scheme (APK Signature Scheme v3): true
+Verified using v3.1 scheme (APK Signature Scheme v3.1): false
+Verified using v4 scheme (APK Signature Scheme v4): false
+Verified for SourceStamp: false
+Number of signers: 1
+Signer #1 certificate DN: CN=NIVORA LAUNCHER
+Signer #1 certificate SHA-256 digest: 97eff0acd8a9dccf3e1719d239cebdb0916a167838e47ea3b7e2305ca2c60ee7
+Signer #1 certificate SHA-1 digest: 2c71733c45c5b125251a744d2e9e3b7e01d20947
+Signer #1 certificate MD5 digest: 2b29995b4ef845f66c47e9e3b5d2fb65
+Signer #1 key algorithm: RSA
+Signer #1 key size (bits): 3072
+Signer #1 public key SHA-256 digest: f58f782e0f48056a90824dfcedde5aaeb057fa5f05cf058a3eb5651d59b34d27
+Signer #1 public key SHA-1 digest: 0abafd23c9e2f9515ec83ff3bf300f9a904f1af5
+Signer #1 public key MD5 digest: a53cee7cc17509a43ea0e6ad0a687160

@@ -107,3 +107,30 @@ jobs:
         run: |
           test "$(gh release view "v$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = true
           gh release upload "v$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" dist/*
+
+  nivora_arm64:
+    if: inputs.version == '0.1.0-alpha.4' && github.ref == 'refs/heads/codex/nivora-final'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Restore pinned signed APK without private key
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 43792112653 --repo "$GITHUB_REPOSITORY" --dir artifacts
+          mkdir dist
+          python3 tools/apk_signature_patch.py apply artifacts/pojav-rust-40-arm64-v8a/Nivora-Launcher-40-bf20d8eab6fc-arm64-v8a.apk packaging/releases/0.1.0-alpha.4/arm64-v8a.json dist/Nivora-Launcher-0.1.0-alpha.4-arm64-v8a.apk
+          cp packaging/releases/0.1.0-alpha.4/{BUILD.json,SHA256SUMS.txt,arm64-v8a-signature.txt,arm64-v8a-audit.json} dist/
+          cd dist
+          sha256sum -c SHA256SUMS.txt
+      - name: Verify Android signature and publish experimental release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs dist/*.apk
+          gh release create v0.1.0-alpha.4 dist/* --repo "$GITHUB_REPOSITORY" --target bf20d8eab6fc04407e24a91fa35de75974de2c0b --title 'NIVORA LAUNCHER 0.1.0-alpha.4 — ARM64' --notes-file packaging/releases/0.1.0-alpha.4/NOTES.md --prerelease
