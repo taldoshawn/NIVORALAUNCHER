@@ -130,13 +130,19 @@ impl Launcher {
         ui.fill(0.0, 0.0, ui.w, ui.h, color::hex(0x0B0B11, 255));
         ui.fill(sidebar, 0.0, 1.0, ui.h, color::hex(0x24232D, 160));
         picture(ui, true, [37.0 * s, 24.0 * s, 53.0 * s, 55.0 * s]);
-        ui.text(
+        // Keep the full brand inside the sidebar at every UI scale.
+        let brand_width = sidebar - 103.0 * s - 18.0 * s;
+        let brand = "Nivora Launcher";
+        let measured = ui.measure(Face::Bold, 23.0 * s, brand);
+        let brand_size = 23.0 * s * (brand_width / measured.max(1.0)).min(1.0);
+        ui.text_clipped(
             Face::Bold,
-            23.0 * s,
+            brand_size,
             103.0 * s,
             29.0 * s,
+            brand_width,
             WHITE,
-            "NIVORA LAUNCHER",
+            brand,
         );
         ui.text(
             Face::Regular,
