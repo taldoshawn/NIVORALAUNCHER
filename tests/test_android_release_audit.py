@@ -96,5 +96,6 @@ class ReleaseAuditTests(unittest.TestCase):
             with zipfile.ZipFile(path,'w') as z:
                 z.writestr('assets/engine-data.zip',archive({'facts.json':b'{}'}))
                 z.writestr('resources.arsc',b'resource table',compress_type=zipfile.ZIP_DEFLATED)
-            findings=audit.inspect_payload(path,public=True)['findings']
+            with patch.object(sys, 'path', [str(Path(__file__).resolve().parents[1] / 'tools'), *sys.path]):
+                findings=audit.inspect_payload(path,public=True)['findings']
             self.assertIn('compressed_resource_table',{f['kind'] for f in findings})
