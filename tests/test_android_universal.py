@@ -45,6 +45,7 @@ class UniversalTests(unittest.TestCase):
                 self.assertEqual(len([n for n in z.namelist() if n.startswith('lib/')]),4)
                 self.assertEqual(z.read('classes.dex'),b'identical shared payload')
                 self.assertNotIn('META-INF/OLD.RSA',z.namelist())
+                self.assertEqual(z.getinfo('resources.arsc').compress_type,zipfile.ZIP_STORED)
     def test_conflicting_shared_resources_are_rejected(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);inputs=self.fixture(root)

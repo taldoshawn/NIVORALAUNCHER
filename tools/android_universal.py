@@ -134,7 +134,8 @@ def assemble(inputs, output):
         with zipfile.ZipFile(temp, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as apk:
             for name, data in sorted(result.items()):
                 info = zipfile.ZipInfo(name, (2009, 1, 1, 0, 0, 0))
-                info.compress_type = zipfile.ZIP_DEFLATED
+                # Android 11+ rejects compressed resource tables for target SDK 30+.
+                info.compress_type = zipfile.ZIP_STORED if name == 'resources.arsc' else zipfile.ZIP_DEFLATED
                 info.external_attr = 0o100644 << 16
                 apk.writestr(info, data)
         temp.replace(output)

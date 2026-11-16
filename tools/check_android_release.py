@@ -79,6 +79,8 @@ def inspect_payload(path, public=False):
             raise ValueError('Required resource archives are absent')
         if public and 'assets/bedrock-controls.zip' in archive.namelist():
             raise ValueError('Public APK must download original control textures, not bundle them')
+        if 'resources.arsc' in archive.namelist() and archive.getinfo('resources.arsc').compress_type != zipfile.ZIP_STORED:
+            findings.append({'path': 'resources.arsc', 'kind': 'compressed_resource_table'})
         walk(archive)
     return {**totals, 'findings': findings}
 
