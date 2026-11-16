@@ -24,9 +24,17 @@ public final class HorizonActivity extends android.app.NativeActivity {
     }
 
     @Override protected void onCreate(android.os.Bundle savedInstanceState) {
+        if (BuildConfig.VERIFY_OFFICIAL_SIGNER && !releaseBuild()) {
+            super.onCreate(savedInstanceState);
+            new android.app.AlertDialog.Builder(this).setTitle("NIVORA LAUNCHER")
+                .setMessage("Assinatura inválida. Instale o APK oficial do NIVORA.")
+                .setCancelable(false).setPositiveButton("Fechar", (d,w) -> finish()).show();
+            return;
+        }
         loadGame();
         super.onCreate(savedInstanceState);
         applyHighRefreshRate(this, 0);
+        UpdatePolicy.check(this);
     }
 
     private void loadGame() {

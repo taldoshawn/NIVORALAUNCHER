@@ -12,6 +12,7 @@ android {
     namespace 'dev.horizon.android'
     compileSdk 35
     defaultConfig {
+        buildConfigField "boolean", "VERIFY_OFFICIAL_SIGNER", hasReleaseKey ? "true" : "false"
         applicationId providers.gradleProperty('appId').getOrElse('com.goydevv.horizon')
         minSdk providers.gradleProperty('minSdk').getOrElse('28').toInteger()
         targetSdk 35
@@ -19,6 +20,7 @@ android {
         versionName '0.1.0' + (providers.gradleProperty('devVersionCode').isPresent() ? '-dev.' + providers.gradleProperty('devBuild').get() : '')
         ndk { abiFilters providers.gradleProperty('abi').get() }
     }
+    buildFeatures { buildConfig true }
     signingConfigs {
         development {
             storeFile file('../../.local/android/debug.keystore')
