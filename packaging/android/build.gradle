@@ -12,7 +12,7 @@ android {
     namespace 'dev.horizon.android'
     compileSdk 35
     defaultConfig {
-        buildConfigField "boolean", "VERIFY_OFFICIAL_SIGNER", hasReleaseKey ? "true" : "false"
+        buildConfigField "boolean", "VERIFY_OFFICIAL_SIGNER", (hasReleaseKey || System.getenv("HORIZON_VERIFY_OFFICIAL_SIGNER") == "1") ? "true" : "false"
         applicationId providers.gradleProperty('appId').getOrElse('com.goydevv.horizon')
         minSdk providers.gradleProperty('minSdk').getOrElse('28').toInteger()
         targetSdk 35
