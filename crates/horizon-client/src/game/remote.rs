@@ -575,7 +575,7 @@ pub(super) struct Remote {
     /// The player's own shared flag 5 (`Entity.isInvisible`) as the server
     /// last set it.
     pub(super) own_invisible: bool,
-    pub(super) own_on_fire: bool,
+    pub(super) own_on_fire: horizon_client::legacy_rules::RemoteFire,
     /// `LivingEntity.DATA_ARROW_COUNT_ID` and `DATA_STINGER_COUNT_ID` of the
     /// own player, as the server synced them.
     pub(super) own_arrows: i32,
@@ -1025,7 +1025,7 @@ impl Game<'_> {
             level_player_textures: HashMap::new(),
             glowing: Default::default(),
             own_invisible: false,
-            own_on_fire: false,
+            own_on_fire: Default::default(),
             own_arrows: 0,
             own_stingers: 0,
             own_shoulders: [None; 2],
@@ -2965,7 +2965,7 @@ impl Game<'_> {
                 if let Some(r) = self.remote.as_mut() {
                     r.carried = Some(0);
                     r.own_invisible = false;
-                    r.own_on_fire = false;
+                    r.own_on_fire.respawn(false);
                     r.online_mode = p.online_mode;
                     r.enforces_secure_chat = p.enforces_secure_chat;
                     r.entity_id = p.player_id;
@@ -3007,7 +3007,7 @@ impl Game<'_> {
                     // (its shared flags) to the new one; without it they reset.
                     if let Some(r) = self.remote.as_mut() {
                         r.own_invisible = false;
-                    r.own_on_fire = false;
+                    r.own_on_fire.respawn(false);
                     }
                 }
                 let dimension_changed = self.dim != Dim::from_id(&p.spawn.dimension);
@@ -3501,7 +3501,7 @@ impl Game<'_> {
                                 }
                                 if let Some(r) = self.remote.as_mut() {
                                     r.own_invisible = flags & 0x20 != 0;
-                                    r.own_on_fire = flags & 1 != 0;
+                                    r.own_on_fire.metadata(*flags);
                                 }
                             }
                             // Entity.DATA_AIR_SUPPLY_ID and
@@ -5763,7 +5763,7 @@ impl Game<'_> {
         // Remote fire is an entity metadata flag, not a locally predicted timer.
         // Reconcile after environmental simulation, including dead/riding ticks.
         if let Some(r) = &self.remote {
-            player.fire_ticks = i32::from(r.own_on_fire);
+            player.fire_ticks = r.own_on_fire.ticks();
         }
         // LocalPlayer.onUpdateAbilities: flight turned on or off (a double
         // jump, a spectator, landing) is sent to the server.
@@ -7882,7 +7882,9 @@ impl Game<'_> {
         // (ItemStack.isSameItem).
         let item = stack.as_ref().map(|s| Arc::clone(&s.item));
         if let Some(r) = self.remote.as_mut() {
-            if r.use_item != item {
+            if ticks == 0 && !self.options.legacy18 {
+                r.use_item = item;
+            } else if r.use_item != item {
                 self.using = None;
                 return;
             }
@@ -8455,7 +8457,7 @@ impl Game<'_> {
         };
         // A soup plugin can replace the held stack before the first use tick.
         // End that use immediately; never rebind it to the returned bowl.
-        if changed && self.using.is_some_and(|(used, _)| used == slot) {
+        if self.options.legacy18 && changed && self.using.is_some_and(|(used, _)| used == slot) {
             self.using = None;
         }
         let answer = self

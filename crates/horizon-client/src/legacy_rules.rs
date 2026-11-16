@@ -27,3 +27,15 @@ pub fn movement_input(keys: Keys, using_item: bool) -> [f32; 2] {
     }
     v
 }
+
+/// Synched entity fire belongs to a connection/player lifetime, not the
+/// client's lava countdown. Missing metadata leaves the last flag intact.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct RemoteFire(bool);
+impl RemoteFire {
+    pub fn metadata(&mut self, flags: i8) { self.0 = flags & 1 != 0; }
+    pub fn respawn(&mut self, keep_entity_data: bool) {
+        if !keep_entity_data { self.0 = false; }
+    }
+    pub fn ticks(self) -> i32 { i32::from(self.0) }
+}

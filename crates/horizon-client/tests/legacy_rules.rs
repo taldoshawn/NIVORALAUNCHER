@@ -23,3 +23,21 @@ fn diagonal_sneak_and_item_input_keep_legacy_axis_scaling() {
     let v=movement_input(Keys { shift:true, ..keys },true);
     assert!((v[0]-0.0588).abs()<1e-7 && (v[1]-0.0588).abs()<1e-7);
 }
+
+#[test]
+fn server_fire_clears_on_respawn_reconnect_and_extinguish_but_keeps_legitimate_fire() {
+    let mut fire=RemoteFire::default();
+    fire.metadata(1); // lava, then health/death packets do not invent an extinguish
+    assert_eq!(fire.ticks(),1);
+    fire.respawn(false); // death or legacy dimension transfer
+    assert_eq!(fire.ticks(),0);
+    fire.metadata(1); // server legitimately ignites the new player
+    assert_eq!(fire.ticks(),1);
+    fire.respawn(true); // modern KEEP_ENTITY_DATA retains authoritative flag
+    assert_eq!(fire.ticks(),1);
+    fire.metadata(0x08); // sprint without burning
+    assert_eq!(fire.ticks(),0);
+    fire.metadata(1);
+    fire=RemoteFire::default(); // new connection must not inherit old metadata
+    assert_eq!(fire.ticks(),0);
+}
