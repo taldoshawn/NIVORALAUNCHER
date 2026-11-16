@@ -385,11 +385,12 @@ impl Launcher {
                 );
             }
             ui.icon(icon, r[0] + 32.0 * s, r[1] + 30.0 * s, 34.0 * s, WHITE);
-            ui.text(
+            ui.text_clipped(
                 Face::SemiBold,
                 21.0 * s,
                 r[0] + 89.0 * s,
                 r[1] + 25.0 * s,
+                (cw - 104.0 * s).max(1.0),
                 WHITE,
                 name,
             );
@@ -408,6 +409,28 @@ impl Launcher {
                 &format!("{count} ativos"),
             );
             self.targets.push((r, Action::Page(page)));
+        }
+        // Reuse existing maintenance flows, with stable touch targets on the home screen.
+        let tools_y = 506.0 * s;
+        let gap = 10.0 * s;
+        let width = (w - gap * 2.0) / 3.0;
+        for (i, (title, action)) in [
+            ("Diagnóstico", Action::Logs),
+            ("Ver atualizações", Action::CheckForUpdates),
+            ("Exportar relatório", Action::ExportDiagnostics),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            small_button(
+                ui,
+                &mut self.targets,
+                [x + i as f32 * (width + gap), tools_y, width, 30.0 * s],
+                title,
+                action,
+                s,
+                false,
+            );
         }
     }
     fn reference_catalog(&mut self, ui: &mut Ui, l: Layout) {

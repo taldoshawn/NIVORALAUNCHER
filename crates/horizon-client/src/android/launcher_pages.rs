@@ -3718,9 +3718,9 @@ impl Launcher {
             title_x,
             head_y + 2.0,
             my3_text(),
-            "Horizon Android Update",
+            "Atualizações do Nivora",
         );
-        let badge_text = format!("v1.0.0  →  v{}", info.version);
+        let badge_text = format!("Release disponível: v{}", info.version);
         let badge_w = ui.measure(Face::SemiBold, 11.0, &badge_text) + 16.0;
         let badge_r = [title_x, head_y + 24.0, badge_w, 20.0];
         ui.rounded(
@@ -6091,9 +6091,9 @@ impl Launcher {
 
                 let has_err = self.home.join("android-error.txt").is_file();
                 let health_badge = if has_err {
-                    "Crash Log Recorded"
+                    "Erro registrado"
                 } else {
-                    "Runtime Healthy"
+                    "Sem erro registrado"
                 };
 
                 let rows: [(&str, &str, SettingControl<'_>); 7] = [
@@ -7937,7 +7937,7 @@ impl Launcher {
                 }
             }
             Some(Action::CheckForUpdates) => {
-                self.catalog.status = "Checking for updates...".into();
+                self.catalog.status = "Verificando releases oficiais…".into();
                 crate::updater::check_in_background();
             }
             Some(Action::FmCloseModal) => {

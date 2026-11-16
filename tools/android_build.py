@@ -96,6 +96,7 @@ def engine_data(public=False):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--abi', choices=TARGETS, default='arm64-v8a')
+    parser.add_argument('--universal-floor', action='store_true', help='Use API 28 for all ABIs when assembling a universal APK')
     parser.add_argument('--sdk', type=Path, default=os.environ.get('ANDROID_HOME') or Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'Android/Sdk')
     parser.add_argument('--java-home', type=Path, default=os.environ.get('JAVA_HOME') or 'C:/Program Files/Android/Android Studio/jbr')
     parser.add_argument('--ndk-version', help='Select an installed NDK version explicitly (CI reproducibility)')
@@ -145,7 +146,7 @@ def main():
     # is the legacy build's floor; the modern builds keep their existing floor.
     compiler_target = 'armv7a-linux-androideabi' if args.abi == 'armeabi-v7a' else target
     legacy = args.abi in ('armeabi-v7a', 'x86')
-    min_sdk = 27 if legacy else 28
+    min_sdk = 27 if legacy and not args.universal_floor else 28
     features = ['--no-default-features', '--features', 'audio'] if legacy else []
     manifests = [(['-p', 'horizon-android'], features)]
     environment = dict(os.environ)
