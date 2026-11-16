@@ -134,3 +134,36 @@ jobs:
         run: |
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs dist/*.apk
           gh release create v0.1.0-alpha.4 dist/* --repo "$GITHUB_REPOSITORY" --target bf20d8eab6fc04407e24a91fa35de75974de2c0b --title 'NIVORA LAUNCHER 0.1.0-alpha.4 — ARM64' --notes-file packaging/releases/0.1.0-alpha.4/NOTES.md --prerelease
+
+  universal43:
+    if: inputs.version == '0.1.0-alpha.5' && github.ref == 'refs/heads/codex/nivora-final'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Retrieve and verify signed universal
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 43884038249 --repo "$GITHUB_REPOSITORY" --name nivora-43-universal --dir dist
+          python3 - <<'PYCODE'
+          import hashlib, json, zipfile
+          from pathlib import Path
+          apk = next(Path('dist').glob('*.apk'))
+          assert hashlib.sha256(apk.read_bytes()).hexdigest() == '78ade598c946ed6d24caa796c52e2dd8a3b68de9ae833998c30a4560ce93d36d'
+          with zipfile.ZipFile(apk) as z:
+              assert z.testzip() is None
+              assert z.getinfo('resources.arsc').compress_type == zipfile.ZIP_STORED
+          m=json.loads(Path('dist/BUILD.json').read_text())
+          assert m['signing']=='repository-key' and not m['requires_official_resigning']
+          PYCODE
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs dist/*.apk
+      - name: Publish direct APK download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v0.1.0-alpha.5 dist/*.apk dist/BUILD.json dist/SHA256SUMS.txt dist/signature.txt dist/audit.json --repo "$GITHUB_REPOSITORY" --target bfca647d27d3ed9cba1fb37704e996c7f8cbc464 --title 'Nivora Launcher — universal experimental' --notes 'Universal Android 9+. Signed with the permanent NIVORA certificate. Source bfca647; packaging fixes in 7d538ec. ZIP CRC, resource table storage, alignment and signature verified. Physical device installation/gameplay still require validation. Download the APK directly; no artifact ZIP extraction is required.' --prerelease
