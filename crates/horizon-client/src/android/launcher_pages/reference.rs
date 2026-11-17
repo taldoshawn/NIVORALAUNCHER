@@ -552,11 +552,14 @@ impl Launcher {
             s,
             true,
         );
+        horizon_client::mod_list::remote::refresh(&self.home);
         // Real results, including built-in native mods. No decorative fake install entries.
         let mut rows: Vec<(String, String, String, Action, Action, bool)> = Vec::new();
         if page == Page::Mods {
             let q = self.catalog.query.to_lowercase();
             for (id, title, description) in horizon_client::mod_list::ANDROID_BUNDLED {
+                if !horizon_client::mod_list::remote::available(id) { continue; }
+                let (title, description) = horizon_client::mod_list::remote::labels(id, title, description);
                 if horizon_client::mod_list::bundled_visible(id, self.catalog.config.legacy18)
                     && (q.is_empty() || title.to_lowercase().contains(&q) || id.contains(&q)) {
                     rows.push((

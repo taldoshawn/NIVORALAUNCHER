@@ -59,5 +59,10 @@
     "commit": "4b08a43f1d32c3946f2638850f9d120bc7ff4a26",
     "date": "2026-11-15",
     "integration": "Fetched current upstream main and inspected relevant path differences. No broad merge: preserve existing Android/protocol47 fork and scope this candidate to targeted lifecycle/input arithmetic changes."
+  },
+  "nivora_remote_mods_review": {
+    "commit": "a68eb5c673b2767486c105444fe74a328bc18262",
+    "date": "2026-11-17",
+    "integration": "Fetched upstream main and inspected mod list and Android bundled-module path differences. Upstream has no equivalent Android bundle. Preserve the existing fork baseline for this bounded declarative remote-settings change; no engine merge or gameplay changes."
   }
 }

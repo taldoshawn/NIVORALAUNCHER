@@ -14,6 +14,7 @@ edition = "2024"
 [workspace]
 [dependencies]
 serde_json = "1"
+ureq = { version = "2", default-features = false, features = ["tls"] }
 """, encoding='utf-8')
     lines = ['#![allow(dead_code)]']
     for mod in ['zoom', 'minimap', 'recipes', 'smartf3']:

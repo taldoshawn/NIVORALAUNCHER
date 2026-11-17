@@ -364,3 +364,6 @@ mod tests {
         assert_eq!(list.serialize(), "mod.c:true\n");
     }
 }
+
+#[path = "remote_mods.rs"]
+pub mod remote;
