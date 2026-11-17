@@ -1583,6 +1583,7 @@ impl Launcher {
                 horizon_client::mod_list::ANDROID_BUNDLED
                     .into_iter()
                     .filter(|(id, title, _)| {
+                        if !horizon_client::mod_list::bundled_visible(id, self.catalog.config.legacy18) { return false; }
                         query.is_empty()
                             || id.contains(&query)
                             || title.to_lowercase().contains(&query)
@@ -7232,6 +7233,7 @@ impl Launcher {
                         horizon_client::mod_list::ANDROID_BUNDLED
                             .iter()
                             .filter(|(id, title, _)| {
+                        if !horizon_client::mod_list::bundled_visible(id, self.catalog.config.legacy18) { return false; }
                                 query.is_empty()
                                     || id.contains(&query)
                                     || title.to_lowercase().contains(&query)

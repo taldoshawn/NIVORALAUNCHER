@@ -40,7 +40,7 @@ pub fn is_live_disabled(mod_id: &str) -> Option<bool> {
 }
 
 /// Fixed native modules compiled into Android APKs, all opt-in.
-pub const ANDROID_BUNDLED: [(&str, &str, &str); 4] = [
+pub const ANDROID_BUNDLED: [(&str, &str, &str); 9] = [
     (
         "zoom",
         "Zoom",
@@ -61,7 +61,48 @@ pub const ANDROID_BUNDLED: [(&str, &str, &str); 4] = [
         "SmartF3",
         "Configurable modules for the F3 debug screen",
     ),
+    (
+        "pvp-fps",
+        "FPS · PvP 1.8.9",
+        "FPS, mínimo e 1% low; configurações em Opções > Mods",
+    ),
+    (
+        "pvp-cps",
+        "CPS · PvP 1.8.9",
+        "Cliques por segundo do ataque e uso de item",
+    ),
+    (
+        "pvp-keys",
+        "Keystrokes · PvP 1.8.9",
+        "WASD, salto e CPS dos controles reais",
+    ),
+    (
+        "pvp-coords",
+        "Coordenadas · PvP 1.8.9",
+        "Posição, direção e relógio do mundo",
+    ),
+    (
+        "pvp-armor",
+        "Armadura · PvP 1.8.9",
+        "Estado da armadura e item na mão",
+    ),
 ];
+
+/// PvP overlays are opt-in and scoped to the selected protocol 47 profile.
+pub fn bundled_visible(id: &str, legacy18: bool) -> bool {
+    legacy18 || !id.starts_with("pvp-")
+}
+
+pub fn pvp_feature(id: &str) -> Option<&'static str> {
+    match id {
+        "pvp-fps" => Some("fps_overlay"),
+        "pvp-cps" => Some("cps_overlay"),
+        "pvp-keys" => Some("keystrokes"),
+        "pvp-coords" => Some("coords_hud"),
+        "pvp-armor" => Some("armor_status"),
+        _ => None,
+    }
+}
 
 /// The folder holding `.hmod` files, beside `options.txt`.
 pub const DIR: &str = "horizon-mods";
@@ -126,7 +167,11 @@ impl ModList {
     pub fn parse(text: &str) -> Self {
         let mut enabled = BTreeSet::new();
         let mut disabled = BTreeSet::new();
-        for line in text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
+        for line in text
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        {
             if let Some((k, v)) = line.split_once(':') {
                 let k = k.trim();
                 let v = v.trim();
@@ -250,6 +295,24 @@ mod tests {
         assert_eq!(list.enabled.iter().collect::<Vec<_>>(), ["coords_hud"]);
         assert_eq!(ModList::parse(&list.serialize()), list);
         assert_eq!(ModList::default().serialize(), "");
+    }
+
+    #[test]
+    fn pvp_profile_switch_preserves_independent_choices() {
+        let list = ModList::parse("mod.pvp-fps:true\nmod.pvp-cps:false\nmod.pvp-keys:true\n");
+        let visible_enabled = |legacy| {
+            ANDROID_BUNDLED
+                .iter()
+                .filter(|(id, _, _)| bundled_visible(id, legacy) && list.enabled.contains(*id))
+                .map(|(id, _, _)| *id)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(visible_enabled(true), ["pvp-fps", "pvp-keys"]);
+        assert!(visible_enabled(false).is_empty());
+        let restored = ModList::parse(&list.serialize());
+        assert!(restored.enabled.contains("pvp-fps"));
+        assert!(restored.disabled.contains("pvp-cps"));
+        assert!(!restored.enabled.contains("pvp-armor"));
     }
 
     #[test]

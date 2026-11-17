@@ -557,7 +557,8 @@ impl Launcher {
         if page == Page::Mods {
             let q = self.catalog.query.to_lowercase();
             for (id, title, description) in horizon_client::mod_list::ANDROID_BUNDLED {
-                if q.is_empty() || title.to_lowercase().contains(&q) || id.contains(&q) {
+                if horizon_client::mod_list::bundled_visible(id, self.catalog.config.legacy18)
+                    && (q.is_empty() || title.to_lowercase().contains(&q) || id.contains(&q)) {
                     rows.push((
                         id.into(),
                         title.into(),
