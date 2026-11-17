@@ -167,3 +167,36 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create v0.1.0-alpha.5 dist/*.apk dist/BUILD.json dist/SHA256SUMS.txt dist/signature.txt dist/audit.json --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title 'Nivora Launcher — universal experimental' --notes 'Universal Android 9+. Signed with the permanent NIVORA certificate. Source bfca647; packaging fixes in 7d538ec. ZIP CRC, resource table storage, alignment and signature verified. Physical device installation/gameplay still require validation. Download the APK directly; no artifact ZIP extraction is required.' --prerelease
+
+  universal44:
+    if: inputs.version == '0.1.0-alpha.6' && github.ref == 'refs/heads/codex/nivora-final'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Retrieve and verify signed universal
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 43892549447 --repo "$GITHUB_REPOSITORY" --name nivora-44-universal --dir dist
+          python3 - <<'PYCODE'
+          import hashlib, json, zipfile
+          from pathlib import Path
+          apk = next(Path('dist').glob('*.apk'))
+          assert hashlib.sha256(apk.read_bytes()).hexdigest() == '4d69a9724b2e2b9977a4002e26e374535791a68bb45508fa630f33f928152171'
+          with zipfile.ZipFile(apk) as z:
+              assert z.testzip() is None
+              assert z.getinfo('resources.arsc').compress_type == zipfile.ZIP_STORED
+          m=json.loads(Path('dist/BUILD.json').read_text())
+          assert m['signing']=='repository-key' and not m['requires_official_resigning']
+          PYCODE
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs dist/*.apk
+      - name: Publish direct APK download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v0.1.0-alpha.6 dist/*.apk dist/BUILD.json dist/SHA256SUMS.txt dist/signature.txt dist/audit.json --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title 'Nivora Launcher 0.1.0-alpha.6 — comunicados no aplicativo' --notes 'APK universal Android 9+, com assinatura permanente NIVORA. Inclui avisos publicados do painel na tela inicial do launcher, sem depender de uma versão nova. Origem c485e077623056449877630e470878d726c145df, versionCode 1044. Compilação das quatro arquiteturas, auditoria e certificado verificados. Gameplay e instalação em aparelho físico ainda precisam de validação. Pré-release experimental; recursos base 26.3 e protocolo 47 experimental. Download direto do APK, sem extrair ZIP.' --prerelease
