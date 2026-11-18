@@ -7,6 +7,10 @@ on:
     paths-ignore: ['docs/**', '**/*.md']
   workflow_dispatch:
     inputs:
+      private_test:
+        description: Build an isolated test app with repository signing; no release publication
+        type: boolean
+        default: false
       all_abis:
         description: Build ARM64, ARMv7, x86 and x86_64
         type: boolean
@@ -45,6 +49,7 @@ jobs:
       CARGO_TARGET_DIR: ${{ github.workspace }}/.local/ci-target
       HORIZON_TELEMETRY_URL: 'off'
       HORIZON_VERIFY_OFFICIAL_SIGNER: '1'
+      NIVORA_PRIVATE_TEST: ${{ inputs.private_test && '1' || '0' }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -125,7 +130,7 @@ jobs:
           CARGO_PROFILE_TEST_DEBUG=0 cargo test -p horizon-client-render --lib touch::custom::tests --locked
           CARGO_PROFILE_TEST_DEBUG=0 cargo test -p horizon-client-render --lib touch::property_input::tests --locked
           CARGO_PROFILE_TEST_DEBUG=0 cargo test -p horizon-client-render --lib touch::pojav::tests --locked
-          CARGO_PROFILE_TEST_DEBUG=0 cargo test -p horizon-client --test hud_editor --test legacy_rules --locked
+          CARGO_PROFILE_TEST_DEBUG=0 cargo test -p horizon-client --test hud_editor --test pojav_import --test legacy_rules --locked
           CARGO_PROFILE_TEST_DEBUG=0 cargo test -p horizon-client --example legacy_login_probe --locked
       - name: Restore this fork's signing identity
         env:
@@ -137,6 +142,8 @@ jobs:
           import base64, os
           from pathlib import Path
           present = [bool(os.environ.get(k)) for k in ('KEYSTORE_BASE64', 'KEYSTORE_PASSWORD', 'KEY_ALIAS')]
+          if not any(present) and os.environ.get('NIVORA_PRIVATE_TEST') == '1':
+              raise SystemExit('Signed private test requires the repository signing secrets')
           if not any(present):
               print('No repository signing key: build uses an ephemeral development certificate.')
               raise SystemExit(0)
@@ -158,10 +165,12 @@ jobs:
         env:
           ABI: ${{ matrix.abi }}
         run: |
+          app_id=dev.taldoshawn.pojav
+          if [[ "$NIVORA_PRIVATE_TEST" == 1 ]]; then app_id=dev.taldoshawn.nivora.private; fi
           universal_args=()
           if [[ "${{ inputs.universal }}" == 'true' ]]; then universal_args+=(--universal-floor); fi
           python3 tools/android_build.py --abi "$ABI" --public --profile release "${universal_args[@]}" \
-            --app-id dev.taldoshawn.pojav --sdk "$ANDROID_HOME" \
+            --app-id "$app_id" --sdk "$ANDROID_HOME" \
             --java-home "${JAVA_HOME_17_X64:-$JAVA_HOME}" --gradle "$(command -v gradle)" \
             --ndk-version 28.2.13676358 --build-tools-version 35.0.0 \
             --dev-build "${GITHUB_RUN_NUMBER}.${GITHUB_SHA:0:12}" \
@@ -182,7 +191,9 @@ jobs:
           (out / 'SHA256SUMS.txt').write_text(f'{digest}  {name}\n')
           for source in ('LICENSE', 'THIRD_PARTY_NOTICES.md'):
               shutil.copyfile(source, out / source)
-          metadata = {'commit': commit, 'abi': abi, 'package': 'dev.taldoshawn.pojav',
+          metadata = {'commit': commit, 'abi': abi,
+                      'package': 'dev.taldoshawn.nivora.private' if os.environ.get('NIVORA_PRIVATE_TEST') == '1' else 'dev.taldoshawn.pojav',
+                      'private_test': os.environ.get('NIVORA_PRIVATE_TEST') == '1',
                       'signing': 'repository-key' if os.environ.get('HORIZON_ANDROID_KEYSTORE') else 'ephemeral-development',
                       'game_target': '26.3', 'legacy_1_8_gameplay': False,
                       'device_tested': False, 'sha256': digest,
