@@ -16335,15 +16335,9 @@ impl ApplicationHandler for Game<'_> {
                 if crate::keyboard_mouse_input() && self.captured && !self.os_mouse_captured {
                     self.os_mouse_captured = crate::platform::capture_mouse(true);
                 }
-                let otg_boost = 2.6
-                    * f64::from(
-                        self.pad
-                            .touch
-                            .settings
-                            .virtual_mouse_sensitivity
-                            .clamp(0.25, 4.0),
-                    );
-                (x * otg_boost, y * otg_boost)
+                // Physical motion already uses the game's mouse sensitivity. Do not
+                // multiply it by the unrelated virtual/touch pointer preference.
+                (x, y)
             };
             self.mouse.on_move(0.0, 0.0, x, y, true, true);
             self.last_input = Instant::now();
@@ -18347,6 +18341,16 @@ impl Game<'_> {
     /// winit's `about_to_wait`: what happens between frames (stop requests, the closing
     /// save, world entry, the control socket, pads), then the next frame.
     pub(super) fn idle(&mut self, event_loop: &dyn EventLoopCtl) {
+        #[cfg(target_os = "android")]
+        if horizon_client::android_runtime::take_peripheral_reset() {
+            self.android_release_touch_keys(true);
+            self.keys.clear(); self.physical_keys.clear(); self.physical_buttons.clear();
+            self.left = false; self.right = false;
+            horizon_client::android_runtime::clear_keypad();
+            horizon_client::android_runtime::clear_gamepads();
+            self.capture(false);
+            crate::touch_input(true);
+        }
         // A splitscreen player's game has nothing to save: P1's shuts the process down.
         #[cfg(target_os = "android")]
         self.android_apply_display_scale();

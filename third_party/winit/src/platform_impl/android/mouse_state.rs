@@ -73,7 +73,7 @@ impl MouseState {
                 } else {
                     (sample.rel_x, sample.rel_y)
                 };
-                if dx != 0.0 || dy != 0.0 {
+                if dx.is_finite() && dy.is_finite() && (dx != 0.0 || dy != 0.0) {
                     events.push(Event::Relative(dx, dy));
                 }
             }
@@ -87,12 +87,12 @@ impl MouseState {
             } else {
                 (0.0, 0.0)
             };
-            let (dx, dy) = if sample.rel_x.hypot(sample.rel_y) >= px_dx.hypot(px_dy) {
+            let (dx, dy) = if sample.rel_x.is_finite() && sample.rel_y.is_finite() && (sample.rel_x != 0.0 || sample.rel_y != 0.0) {
                 (sample.rel_x, sample.rel_y)
             } else {
                 (px_dx, px_dy)
             };
-            if dx != 0.0 || dy != 0.0 {
+            if dx.is_finite() && dy.is_finite() && (dx != 0.0 || dy != 0.0) {
                 events.push(Event::Relative(dx, dy));
             }
             self.x = Some(sample.x);
@@ -259,5 +259,22 @@ mod tests {
 impl MouseState {
     pub fn buttons(&self) -> u32 {
         self.buttons
+    }
+}
+
+#[cfg(test)]
+mod peripheral_regressions {
+    use super::*;
+    fn sample() -> Sample { Sample { action:2,x:100.,y:100.,rel_x:0.,rel_y:0.,wheel:(0.,0.),buttons:0,relative:false,touchpad:false } }
+    #[test] fn relative_axes_win_over_absolute_cursor_warps() {
+        let mut m=MouseState::default();m.update(sample());
+        let events=m.update(Sample{x:1000.,y:1000.,rel_x:1.,rel_y:2.,..sample()});
+        assert!(events.contains(&Event::Relative(1.,2.)));
+        assert!(!events.contains(&Event::Relative(900.,900.)));
+    }
+    #[test] fn invalid_relative_motion_never_reaches_camera_and_cancel_releases_buttons() {
+        let mut m=MouseState::default();m.update(Sample{buttons:3,..sample()});
+        assert!(!m.update(Sample{x:0.,y:0.,rel_x:f64::NAN,relative:true,buttons:3,..sample()}).iter().any(|e|matches!(e,Event::Relative(x,y) if !x.is_finite()||!y.is_finite())));
+        let e=m.update(Sample{action:3,..sample()});assert!(e.contains(&Event::Button(1,false)));assert!(e.contains(&Event::Button(2,false)));
     }
 }

@@ -30,7 +30,7 @@ pub fn apply_number(p: &mut Placement, field: usize, text: &str, viewport: [f32;
             if n <= 0.0 {
                 return false;
             }
-            let ratio = (n / (h.max(1.0) * p.size)).clamp(0.4, 3.2);
+            let ratio = (n / (h.max(1.0) * p.size)).clamp(if p.pojav_imported {0.01} else {0.4}, if p.pojav_imported {256.0} else {3.2});
             if field == 0 {
                 p.width_ratio = ratio;
             } else {

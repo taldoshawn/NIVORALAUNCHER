@@ -155,7 +155,7 @@ impl Launcher {
         let pages = [
             (Page::Play, Icon::Play, "Jogar"),
             (Page::Mods, Icon::Cube, "Mods"),
-            (Page::Packs, Icon::Packs, "Resource Packs"),
+            (Page::Packs, Icon::Packs, "Recursos"),
             (Page::Shaders, Icon::Monitor, "Shaders"),
             (Page::Installed, Icon::Grid, "Instalados"),
             (Page::Settings, Icon::Gear, "Configurações"),
@@ -190,7 +190,7 @@ impl Launcher {
             54.0 * s,
             ui.h - 47.0 * s,
             MUTED,
-            "v0.1.0",
+            if option_env!("NIVORA_PRIVATE_TEST")==Some("1") {"TESTE PRIVADO"} else {"v0.1.0"},
         );
         // Header actions keep actual account names and skin selection.
         let name = self
@@ -227,15 +227,8 @@ impl Launcher {
             ],
             Action::Page(Page::Skins),
         ));
-        let edit = [account[0] - 42.0 * s, 30.0 * s, 32.0 * s, 38.0 * s];
-        ui.icon(
-            Icon::Gamepad,
-            edit[0] + 5.0 * s,
-            edit[1] + 8.0 * s,
-            22.0 * s,
-            MUTED,
-        );
-        self.targets.push((edit, Action::OpenControlEditor));
+        let edit = [account[0] - 117.0 * s, 30.0 * s, 106.0 * s, 38.0 * s];
+        small_button(ui, &mut self.targets, edit, "Editar HUD", Action::OpenControlEditor, s, false);
         self.anim.step(
             self.catalog.page,
             self.catalog.settings_category,
@@ -378,7 +371,7 @@ impl Launcher {
         let cw = (w - gap * 2.0) / 3.0;
         for (i, (name, icon, page, kind)) in [
             ("Mods", Icon::Puzzle, Page::Mods, Kind::Mods),
-            ("Resource Packs", Icon::Packs, Page::Packs, Kind::Packs),
+            ("Pacotes de recursos", Icon::Packs, Page::Packs, Kind::Packs),
             ("Shaders", Icon::Monitor, Page::Shaders, Kind::Shaders),
         ]
         .into_iter()
@@ -1021,5 +1014,12 @@ impl Launcher {
             );
             self.targets.push((r, action));
         }
+        let editor = [x, 430.0*s, w, 70.0*s];
+        rect(ui, editor, 16.0*s);
+        ui.icon(Icon::Gamepad, x+23.0*s, editor[1]+21.0*s, 28.0*s, ACCENT);
+        ui.text(Face::SemiBold, 18.0*s, x+76.0*s, editor[1]+12.0*s, WHITE, "Editor de HUD");
+        ui.text_clipped(Face::Regular, 12.0*s, x+76.0*s, editor[1]+39.0*s, (w-110.0*s).max(1.0), MUTED, "Editar botões, importar Pojav e organizar seus controles");
+        self.targets.push((editor, Action::OpenControlEditor));
+
     }
 }

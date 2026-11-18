@@ -187,6 +187,7 @@ enum Role {
 
 pub struct TouchControls {
     pub settings: Settings,
+    pub controls_hidden: bool,
     pub hud_opacity_scale: f32,
     pub force_crosshair: bool,
     pub projectile_crosshair: bool,
@@ -242,6 +243,7 @@ impl Default for TouchControls {
     fn default() -> Self {
         Self {
             settings: Settings::default(),
+            controls_hidden: false,
             hud_opacity_scale: 1.0,
             force_crosshair: false,
             projectile_crosshair: false,
@@ -458,6 +460,7 @@ impl TouchControls {
     }
 
     pub fn visible_for_state(&self, c: Control, in_menu: bool) -> bool {
+        if self.controls_hidden && self.editor.is_none() { return false; }
         if !self.visible(c) {
             return false;
         }
@@ -519,6 +522,14 @@ impl TouchControls {
         }
     }
     pub fn placement(&self, c: Control) -> layout::Placement {
+        if c == Control::Move {
+            if let Some(g)=&self.settings.pojav_joystick {
+                let raw=self.settings.layouts[self.settings.mode.index()][c as usize];
+                if let Some(mut p)=g.placement(raw,self.aspect(),self.settings.button_scale) {
+                    if self.settings.left_handed {p.center[0]=1.-p.center[0];}return p;
+                }
+            }
+        }
         let mut p = self.settings.placement(c);
         let factory_swap = c == Control::Offhand
             && self.settings.layouts[self.settings.mode.index()][c as usize].center == [0.80, 0.96]
@@ -1811,6 +1822,9 @@ pub fn draw_goy_static_button(
     toggled: bool,
     opacity: f32,
 ) {
+    let mut style=*p;
+    if style.pojav_imported {style.roundness=w.min(h)*style.roundness/100.0;style.stroke_roundness=w.min(h)*style.stroke_roundness/100.0;}
+    let p=&style;
     let fill_c = if held {
         scale_alpha(p.on_click_color, opacity)
     } else if toggled {

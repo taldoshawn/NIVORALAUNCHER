@@ -390,6 +390,9 @@ fn apply_editor_button_label_output_at(
         if !ed.editing_button_label {
             let cancelled = matches!(out, Output::Key(KeyCode::Escape));
             if !cancelled && let Some(index) = ed.selected_custom {
+                if field <= 3 && ed.button_label_input.trim().parse::<f32>().is_ok_and(|v|v.is_finite() && (field >= 2 || v > 0.)) {
+                    crate::touch::pojav::materialize(&mut tc.settings,index,ed.property_viewport[0]/ed.property_viewport[1].max(1.));
+                }
                 let mut valid = false;
                 if let Some(button) = tc.settings.custom_buttons.get_mut(index) {
                     for placement in &mut button.layouts {
@@ -1622,11 +1625,11 @@ pub fn draw_goy_hud(
             rw,
             rh,
             p.shape,
-            p.roundness,
+            if p.pojav_imported { rw.min(rh)*p.roundness/100.0 } else { p.roundness },
             fill_c,
             p.stroke_size,
             p.stroke_margin,
-            p.stroke_roundness,
+            if p.pojav_imported { rw.min(rh)*p.stroke_roundness/100.0 } else { p.stroke_roundness },
             stroke_c,
             0.0,
             shadow_c,
@@ -1682,11 +1685,11 @@ pub fn draw_goy_hud(
             rw,
             rh,
             p.shape,
-            p.roundness,
+            if p.pojav_imported { rw.min(rh)*p.roundness/100.0 } else { p.roundness },
             fill_c,
             p.stroke_size,
             p.stroke_margin,
-            p.stroke_roundness,
+            if p.pojav_imported { rw.min(rh)*p.stroke_roundness/100.0 } else { p.stroke_roundness },
             stroke_c,
             0.0,
             shadow_c,
@@ -4230,7 +4233,8 @@ fn duplicate_selected_editor_button(ed: &mut crate::touch::Editor, tc: &mut crat
     }
     if let Some(idx) = ed.selected_custom {
         push_undo_snapshot(ed, &tc.settings);
-        ed.selected_custom = tc.settings.clone_custom_button(idx);
+        let aspect = tc.aspect();
+        ed.selected_custom = tc.settings.clone_custom_button_for_viewport(idx, aspect);
         ed.selected = None;
         let _ = tc.settings.save();
     } else if let Some(ctrl) = ed.selected {
@@ -4817,11 +4821,11 @@ pub fn draw_hud_editor(
                 rw,
                 rh,
                 p.shape,
-                p.roundness,
+                if p.pojav_imported { rw.min(rh)*p.roundness/100.0 } else { p.roundness },
                 fill_c,
                 p.stroke_size,
                 p.stroke_margin,
-                p.stroke_roundness,
+                if p.pojav_imported { rw.min(rh)*p.stroke_roundness/100.0 } else { p.stroke_roundness },
                 stroke_c,
                 p.shadow_size,
                 shadow_c,
@@ -4881,11 +4885,11 @@ pub fn draw_hud_editor(
                 rw,
                 rh,
                 p.shape,
-                p.roundness,
+                if p.pojav_imported { rw.min(rh)*p.roundness/100.0 } else { p.roundness },
                 fill_c,
                 p.stroke_size,
                 p.stroke_margin,
-                p.stroke_roundness,
+                if p.pojav_imported { rw.min(rh)*p.stroke_roundness/100.0 } else { p.stroke_roundness },
                 stroke_c,
                 p.shadow_size,
                 shadow_c,
@@ -5845,11 +5849,11 @@ pub fn draw_hud_editor(
                         bw_p,
                         bh_p,
                         p.shape,
-                        p.roundness,
+                        if p.pojav_imported { bw_p.min(bh_p)*p.roundness/100.0 } else { p.roundness },
                         color::with_alpha(p.button_color, prev_alpha),
                         p.stroke_size.clamp(0.0, 6.0),
                         p.stroke_margin,
-                        p.stroke_roundness,
+                        if p.pojav_imported { bw_p.min(bh_p)*p.stroke_roundness/100.0 } else { p.stroke_roundness },
                         color::with_alpha(p.stroke_color, prev_alpha),
                         p.shadow_size,
                         color::with_alpha(p.shadow_color, prev_alpha),
@@ -6053,11 +6057,11 @@ pub fn draw_hud_editor(
                         bw_p,
                         bh_p,
                         p.shape,
-                        p.roundness,
+                        if p.pojav_imported { bw_p.min(bh_p)*p.roundness/100.0 } else { p.roundness },
                         color::with_alpha(p.button_color, prev_alpha),
                         p.stroke_size.clamp(0.0, 6.0),
                         p.stroke_margin,
-                        p.stroke_roundness,
+                        if p.pojav_imported { bw_p.min(bh_p)*p.stroke_roundness/100.0 } else { p.stroke_roundness },
                         color::with_alpha(p.stroke_color, prev_alpha),
                         p.shadow_size,
                         color::with_alpha(p.shadow_color, prev_alpha),
@@ -7147,6 +7151,8 @@ pub fn touch_hud_editor(
                                 center = snapped;
                             }
                             if let Some(idx) = ed.selected_custom {
+                                let current=tc.custom_placement(idx).center;
+                                if (current[0]-center[0]).hypot(current[1]-center[1])>0.00001 {crate::touch::pojav::materialize(&mut tc.settings,idx,aspect);}
                                 if let Some(btn) = tc.settings.custom_buttons.get_mut(idx) {
                                     let pl = &mut btn.layouts[mode_idx];
                                     let [_, _, rw, rh] = pl.rect(aspect);
@@ -7177,12 +7183,15 @@ pub fn touch_hud_editor(
                                 let mode_idx = tc.settings.mode.index();
                                 let mut center = next.center;
                                 if tc.settings.left_handed { center[0] = 1.0 - center[0]; }
+                                let geometry_scale=tc.settings.button_scale.max(0.01);
                                 let apply = |stored: &mut crate::touch::Placement| {
+                                    stored.size = next.size / geometry_scale;
                                     stored.width_ratio = next.width_ratio;
                                     stored.height_ratio = next.height_ratio;
                                     stored.center = center;
                                 };
                                 if let Some(idx) = ed.selected_custom {
+                                    crate::touch::pojav::materialize(&mut tc.settings,idx,w/h.max(1.0));
                                     if let Some(btn) = tc.settings.custom_buttons.get_mut(idx) { apply(&mut btn.layouts[mode_idx]); }
                                 } else if let Some(c) = ed.selected {
                                     let slot = tc.settings.slot(c);

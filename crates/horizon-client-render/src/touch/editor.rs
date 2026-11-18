@@ -35,8 +35,8 @@ pub fn resize_handle([x, y, w, h]: [f32; 4], viewport: [f32; 2]) -> [f32; 4] {
 pub fn resize_placement(original: Placement, delta: [f32; 2], aspect: f32) -> Placement {
     let mut next = original;
     let [left, top, _, _] = original.rect(aspect);
-    next.width_ratio = (original.width_ratio + delta[0] * aspect / original.size).clamp(0.4, 3.2);
-    next.height_ratio = (original.height_ratio + delta[1] / original.size).clamp(0.4, 3.2);
+    next.width_ratio = (original.width_ratio + delta[0] * aspect / original.size).clamp(if original.pojav_imported {0.01} else {0.4}, if original.pojav_imported {256.0} else {3.2});
+    next.height_ratio = (original.height_ratio + delta[1] / original.size).clamp(if original.pojav_imported {0.01} else {0.4}, if original.pojav_imported {256.0} else {3.2});
     let [_, _, width, height] = next.rect(aspect);
     next.center = [left + width * 0.5, top + height * 0.5];
     next

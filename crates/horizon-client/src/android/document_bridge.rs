@@ -16,6 +16,10 @@ pub fn register(
     env.register_native_methods(
         class,
         &[NativeMethod {
+            name: "nativeInputDeviceRemoved".into(),
+            sig: "(I)V".into(),
+            fn_ptr: input_device_removed as *mut std::ffi::c_void,
+        }, NativeMethod {
             name: "nativeDocumentResult".into(),
             sig: "(IILjava/lang/String;)V".into(),
             fn_ptr: callback as *mut std::ffi::c_void,
@@ -630,4 +634,8 @@ pub fn prepare_content_tree(
         }
         Ok(())
     })
+}
+
+extern "system" fn input_device_removed(_: JNIEnv<'_>, _: JObject<'_>, _: i32) {
+    horizon_client::android_runtime::peripheral_removed();
 }

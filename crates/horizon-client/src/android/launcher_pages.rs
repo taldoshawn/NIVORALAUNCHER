@@ -1548,7 +1548,7 @@ impl Launcher {
                 &mut ui,
                 &mut self.targets,
                 [content_x, sub_y, 114.0, 29.0],
-                "Open folder",
+                "Abrir pasta",
                 Action::OpenFolder(kind),
                 false,
             );
@@ -1556,7 +1556,7 @@ impl Launcher {
                 &mut ui,
                 &mut self.targets,
                 [content_x + 122.0, sub_y, 114.0, 29.0],
-                "Import file",
+                "Importar arquivo",
                 Action::Import(kind),
                 false,
             );
@@ -1950,7 +1950,7 @@ impl Launcher {
             let show_corner_links = page == Page::Settings
                 && self.catalog.settings_category == SettingsCategory::Overview;
             let status = self.error.as_deref().unwrap_or(&self.catalog.status);
-            if !status.is_empty() && !page.is_catalog() {
+            if !status.is_empty() && !page.is_catalog() && !(page == Page::Settings && (status.contains("results") || status.contains("available"))) {
                 let max_snack_w = if show_corner_links {
                     (content_w - 224.0).max(120.0)
                 } else {
@@ -4657,8 +4657,8 @@ impl Launcher {
                         SettingControl::Button(&hz_str, Action::DisplayHz, false),
                     ),
                     (
-                        "Display aspect ratio",
-                        "Native fullscreen, 16:9 widescreen, 4:3 classic or square",
+                        "Proporção da tela",
+                        "Tela inteira nativa, widescreen 16:9, clássico 4:3 ou quadrado",
                         SettingControl::Button(&aspect_str, Action::Aspect, false),
                     ),
                     (
@@ -4713,16 +4713,16 @@ impl Launcher {
                     ),
                     (
                         "Graphics Quality Preset",
-                        "Cycle between Fast, Fancy and Fabulous rendering modes",
+                        "Escolha a qualidade gráfica do jogo",
                         SettingControl::Button(&preset_str, Action::CycleGraphicsPreset, false),
                     ),
                     (
-                        "Max Framerate Ceiling",
-                        "Cap gameplay FPS to save power or unlock for high-refresh displays",
+                        "Limite de FPS",
+                        "Limite os frames para economizar energia ou aproveitar uma tela rápida",
                         SettingControl::Button(&fps_str, Action::CycleMaxFps, false),
                     ),
                     (
-                        "Vertical Sync & Cloud Rendering",
+                        "Sincronização vertical e nuvens",
                         "Tap switch to toggle VSync, or cycle Clouds in in-game video options",
                         SettingControl::Toggle(opts.vsync, Action::ToggleVsync),
                     ),
@@ -4859,13 +4859,13 @@ impl Launcher {
                         SettingControl::Button(&worker_str, Action::WorkerLimit, false),
                     ),
                     (
-                        "Reusable RAM cache budget",
-                        "Pooled audio & mesh buffer cache ceiling",
+                        "Limite do cache de memória",
+                        "Memória reutilizável para sons e malhas",
                         SettingControl::Button(&cache_str, Action::CacheBudget, false),
                     ),
                     (
-                        "Quick-join server address",
-                        "Optional server IP:port to connect immediately on Play",
+                        "Endereço do servidor",
+                        "IP:porta opcional para conectar ao iniciar o jogo",
                         SettingControl::TextField {
                             label: "SERVER IP",
                             value: &c.server,
@@ -4876,8 +4876,8 @@ impl Launcher {
                     ),
                     (
                         "Open game & world folders",
-                        "Manage saves, resource packs and mods in Android Files",
-                        SettingControl::Button("Open Files", Action::GameFiles, false),
+                        "Gerencie mundos, pacotes e mods no aplicativo Arquivos do Android",
+                        SettingControl::Button("Abrir arquivos", Action::GameFiles, false),
                     ),
                 ];
 
@@ -5553,7 +5553,7 @@ impl Launcher {
                      fraction: (touch_cfg.virtual_mouse_sensitivity - 0.25) / 2.75,
                      minus_action: Action::VirtualMouseSpeedDelta(-0.10), plus_action: Action::VirtualMouseSpeedDelta(0.10) }),
                     ("Keyboard controls", "Create an editable WASD layout with keyboard and mouse buttons",
-                     SettingControl::Button("Create WASD layout", Action::KeyboardControlPreset, false)),
+                     SettingControl::Button("Criar layout WASD", Action::KeyboardControlPreset, false)),
                     ("FPS COUNTER", "Measured frames; does not change the frame limit",
                      SettingControl::SectionHeader("FPS", Icon::Settings)),
                     ("Show FPS", "Native Rust counter during gameplay",
@@ -5955,7 +5955,7 @@ impl Launcher {
                     let r_import = [r_editor[0] + btn_w_sm + btn_gap, btn_y_wb, btn_w_sm, 36.0];
                     let r_export = [r_import[0] + btn_w_sm + btn_gap, btn_y_wb, btn_w_sm, 36.0];
                     for (rect, lbl, act, primary) in [
-                        (r_editor, "Open Editor", Action::OpenControlEditor, true),
+                        (r_editor, "Abrir editor", Action::OpenControlEditor, true),
                         (r_import, "Import JSON", Action::ImportControlProfile, false),
                         (r_export, "Export Save", Action::ExportControlProfile, false),
                     ] {
@@ -6476,9 +6476,9 @@ impl Launcher {
                 self.catalog.config.save(&self.home)?;
                 self.catalog.config.apply_experimental_to_game(&self.home);
                 self.catalog.status = if self.catalog.config.max_fps_mode {
-                    "Max FPS Mode enabled: 260 FPS uncapped with VSync disabled and high-refresh requested."
+                    "Modo de alto FPS ativado: limite de 260 FPS, sem VSync."
                 } else {
-                    "Max FPS Mode disabled (balanced 120 FPS default restored)."
+                    "Modo equilibrado restaurado: limite de 120 FPS."
                 }
                 .into();
             }

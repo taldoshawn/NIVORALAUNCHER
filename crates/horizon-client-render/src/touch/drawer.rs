@@ -49,6 +49,20 @@ impl Settings {
         }
     }
     pub fn clone_custom_button(&mut self, index: usize) -> Option<usize> {
+        self.clone_custom_button_for_viewport(index, 854. / 480.)
+    }
+    pub fn clone_custom_button_for_viewport(&mut self, index: usize, aspect: f32) -> Option<usize> {
+        let scale = self.button_scale.max(0.01);
+        let resolve = |button: &mut CustomButton| {
+            if let Some(g) = button.pojav_geometry.take() {
+                for p in &mut button.layouts {
+                    if let Some(mut resolved) = g.placement(*p, aspect, scale) {
+                        resolved.size /= scale;
+                        *p = resolved;
+                    }
+                }
+            }
+        };
         let mut copy = self.custom_buttons.get(index)?.clone();
         let children: Vec<_> = copy
             .drawer_id
@@ -64,6 +78,7 @@ impl Settings {
         if copy.drawer_id.is_some() {
             copy.drawer_id = Some(new_id);
         }
+        resolve(&mut copy);
         copy.custom_label = format!("{} cópia", copy.label());
         for p in &mut copy.layouts {
             p.center[1] = (p.center[1] + 0.12).min(0.92);
@@ -71,6 +86,7 @@ impl Settings {
         let new_index = self.custom_buttons.len();
         self.custom_buttons.push(copy);
         for mut child in children {
+            resolve(&mut child);
             child.parent_drawer = Some(new_id);
             for p in &mut child.layouts {
                 p.center[1] = (p.center[1] + 0.12).min(0.92);

@@ -252,6 +252,9 @@ impl Game<'_> {
                     self.keys.insert(key);
                 } else {
                     self.pad.custom_keys.remove(&key);
+                    if self.pad.hardware_keys.contains(&key) {
+                        return; // Releasing a HUD modifier must not release the physical key.
+                    }
                     self.physical_keys.remove(&key);
                     self.keys.remove(&key);
                 }
@@ -309,6 +312,14 @@ impl Game<'_> {
         if name == "mouse.look" {
             return;
         }
+        if name == "controls.toggle" {
+            if down { self.pad.touch.controls_hidden = !self.pad.touch.controls_hidden; }
+            return;
+        }
+        if name == "launcher.menu" {
+            if down { self.pad.touch.settings_requested = true; }
+            return;
+        }
         if name == "keyboard.show" {
             if down { self.android_show_keyboard(); }
             return;
@@ -339,10 +350,12 @@ impl Game<'_> {
             return;
         };
         if down {
-            self.pad.custom_keys.insert(key);
+            let already_held = !self.pad.custom_keys.insert(key) || self.pad.hardware_keys.contains(&key);
             self.physical_keys.insert(key);
+            if already_held { return; }
         } else {
             self.pad.custom_keys.remove(&key);
+            if self.pad.hardware_keys.contains(&key) { return; }
             self.physical_keys.remove(&key);
         }
         if down
@@ -1344,7 +1357,7 @@ impl Game<'_> {
             "streaming":self.streaming.stages().into_iter().collect::<std::collections::BTreeMap<_,_>>()})
     }
     pub(super) fn android_key_up(&mut self, key: KeyCode) {
-        if self.pad.custom_keys.contains(&key) {
+        if self.pad.custom_keys.contains(&key) || self.pad.hardware_keys.contains(&key) {
             return;
         }
         self.physical_keys.remove(&key);

@@ -19,6 +19,8 @@ pub struct CustomButton {
     pub drawer_id: Option<u64>,
     #[serde(default)]
     pub parent_drawer: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pojav_geometry: Option<super::pojav::Geometry>,
     pub layouts: [Placement; 3],
 }
 impl CustomButton {
@@ -38,6 +40,7 @@ impl CustomButton {
             always_visible: false,
             drawer_id: None,
             parent_drawer: None,
+            pojav_geometry: None,
             layouts: [placement; 3],
         }
     }
@@ -47,7 +50,7 @@ impl CustomButton {
             || crate::keybinds::mouse_button(token).is_some()
             || matches!(
                 token,
-                "mouse.scroll.up" | "mouse.scroll.down" | "mouse.virtual.toggle" | "mouse.look" | "keyboard.show"
+                "mouse.scroll.up" | "mouse.scroll.down" | "mouse.virtual.toggle" | "mouse.look" | "keyboard.show" | "launcher.menu" | "controls.toggle"
             )
             || token
                 .strip_prefix("action:")
@@ -176,7 +179,9 @@ impl CustomButton {
         out
     }
     pub fn label(&self) -> String {
-        if !self.custom_label.trim().is_empty() {
+        // Empty names in a Pojav layout are intentional (for example diagonal
+        // movement hitboxes), rather than a request for an automatic key label.
+        if self.layouts.iter().any(|p| p.pojav_imported) || !self.custom_label.trim().is_empty() {
             return self.custom_label.trim().to_owned();
         }
         let tokens = self.active_tokens();
@@ -341,6 +346,12 @@ impl TouchControls {
             return Placement::new(0.5, 0.5, 0.105);
         };
         let mut p = btn.layouts[self.settings.mode.index()];
+        if let Some(g) = &btn.pojav_geometry {
+            if let Some(mut dynamic) = g.placement(p, self.aspect(), self.settings.button_scale) {
+                if self.settings.left_handed { dynamic.center[0] = 1. - dynamic.center[0]; }
+                return dynamic;
+            }
+        }
         if self.settings.left_handed {
             p.center[0] = 1.0 - p.center[0];
         }
@@ -350,6 +361,7 @@ impl TouchControls {
         if index >= self.settings.custom_buttons.len() {
             return false;
         }
+        if self.controls_hidden && !self.settings.custom_buttons[index].active_tokens().iter().any(|t| t == "controls.toggle") && self.editor.is_none() { return false; }
         let p = self.custom_placement(index);
         let is_goy =
             self.settings.control_style == layout::ControlStyle::GoyControl || p.use_goy_style;

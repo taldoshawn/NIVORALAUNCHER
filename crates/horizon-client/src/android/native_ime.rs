@@ -78,6 +78,8 @@ pub unsafe fn initialize(
         .with_local_frame(32, |env| -> jni::errors::Result<_> {
             let activity = unsafe { JObject::from_raw(activity) };
             crate::document_bridge::register(env, &activity, crate::documents::document_result)?;
+            let canvas_height=env.call_method(&activity,"controlCanvasHeight","()F",&[])?.f()?;
+            horizon_client::touch::pojav::set_canvas_height(canvas_height);
             let content = env
                 .call_method(
                     &activity,
@@ -559,6 +561,9 @@ impl Ui {
                     .unwrap_or_else(std::sync::PoisonError::into_inner) = text;
             }
             Command::Bounds => {
+                if let Ok(height) = env.call_method(&self.activity,"controlCanvasHeight","()F",&[]).and_then(|v|v.f()) {
+                    horizon_client::touch::pojav::set_canvas_height(height);
+                }
                 self.bounds_pending.store(false, Ordering::Release);
                 let rect = env.new_object("android/graphics/Rect", "()V", &[])?;
                 env.call_method(

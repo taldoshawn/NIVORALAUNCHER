@@ -274,6 +274,7 @@ pub fn check_for_update() -> Result<Option<ReleaseInfo>, String> {
 
 /// Initiates an update check on a background worker thread.
 pub fn check_in_background() {
+    if option_env!("NIVORA_PRIVATE_TEST") == Some("1") { return; }
     if CHECKING.swap(true, Ordering::SeqCst) {
         return;
     }

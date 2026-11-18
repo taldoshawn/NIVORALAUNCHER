@@ -275,6 +275,8 @@ fn default_toggle_stroke() -> u32 {
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Placement {
+    #[serde(default)]
+    pub pojav_imported: bool,
     pub center: [f32; 2],
     pub size: f32,
     pub opacity: f32,
@@ -336,6 +338,7 @@ pub struct Placement {
 impl Placement {
     pub fn new(x: f32, y: f32, size: f32) -> Self {
         Self {
+            pojav_imported: false,
             center: [x, y],
             size,
             opacity: 0.65,
@@ -364,12 +367,12 @@ impl Placement {
         }
     }
     pub fn rect(self, aspect: f32) -> [f32; 4] {
-        let wr = if self.width_ratio.is_finite() && self.width_ratio > 0.05 {
+        let wr = if self.width_ratio.is_finite() && self.width_ratio > if self.pojav_imported { 0.0001 } else { 0.05 } {
             self.width_ratio
         } else {
             1.0
         };
-        let hr = if self.height_ratio.is_finite() && self.height_ratio > 0.05 {
+        let hr = if self.height_ratio.is_finite() && self.height_ratio > if self.pojav_imported { 0.0001 } else { 0.05 } {
             self.height_ratio
         } else {
             1.0
@@ -385,17 +388,17 @@ impl Placement {
         if !self.opacity.is_finite() {
             self.opacity = 0.65;
         }
-        self.size = self.size.clamp(0.045, 0.45);
+        self.size = self.size.clamp(if self.pojav_imported {0.001} else {0.045}, if self.pojav_imported {2.0} else {0.45});
         self.opacity = self.opacity.clamp(0.0, 1.0);
         self.shape = self.shape.min(6);
         self.icon_id = self.icon_id.min(12);
-        self.width_ratio = if self.width_ratio.is_finite() && self.width_ratio > 0.05 {
-            self.width_ratio.clamp(0.4, 3.2)
+        self.width_ratio = if self.width_ratio.is_finite() && self.width_ratio > if self.pojav_imported { 0.0001 } else { 0.05 } {
+            self.width_ratio.clamp(if self.pojav_imported {0.01} else {0.4}, if self.pojav_imported {256.} else {3.2})
         } else {
             1.0
         };
-        self.height_ratio = if self.height_ratio.is_finite() && self.height_ratio > 0.05 {
-            self.height_ratio.clamp(0.4, 3.2)
+        self.height_ratio = if self.height_ratio.is_finite() && self.height_ratio > if self.pojav_imported { 0.0001 } else { 0.05 } {
+            self.height_ratio.clamp(if self.pojav_imported {0.01} else {0.4}, if self.pojav_imported {256.} else {3.2})
         } else {
             1.0
         };
@@ -410,7 +413,7 @@ impl Placement {
             0.0
         };
         self.stroke_roundness = if self.stroke_roundness.is_finite() {
-            self.stroke_roundness.clamp(0.0, 50.0)
+            self.stroke_roundness.clamp(0.0, if self.pojav_imported {100.0} else {50.0})
         } else {
             10.0
         };
@@ -420,13 +423,13 @@ impl Placement {
             0.0
         };
         self.roundness = if self.roundness.is_finite() {
-            self.roundness.clamp(0.0, 50.0)
+            self.roundness.clamp(0.0, if self.pojav_imported {100.0} else {50.0})
         } else {
             10.0
         };
         for c in &mut self.center {
             *c = if c.is_finite() {
-                c.clamp(0.025, 0.975)
+                c.clamp(if self.pojav_imported {0.0} else {0.025}, if self.pojav_imported {1.0} else {0.975})
             } else {
                 0.5
             };
@@ -436,6 +439,9 @@ impl Placement {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
+    pub pojav_info: Option<serde_json::Value>,
+    pub pojav_drawers: Vec<serde_json::Value>,
+    pub pojav_joystick: Option<super::pojav::Geometry>,
     pub mode: Mode,
     pub split_controls: bool,
     pub contextual_interact: bool,
@@ -641,6 +647,9 @@ impl Default for Settings {
             active_profile: default_profile_name(),
             default_profile: default_profile_name(),
             preset_id: default_profile_name(),
+            pojav_info: None,
+            pojav_drawers: Vec::new(),
+            pojav_joystick: None,
             preset_name: default_preset_display_name(),
             preset_description: default_mcpe_preset_desc(),
             active_mcpe_preset: default_profile_name(),
@@ -1739,6 +1748,7 @@ impl Settings {
                 always_visible: in_menu,
                 drawer_id: None,
                 parent_drawer: None,
+                pojav_geometry: None,
                 layouts: [p; 3],
             }
         };
