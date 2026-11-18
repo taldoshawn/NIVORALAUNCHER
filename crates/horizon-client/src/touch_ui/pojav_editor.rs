@@ -4,6 +4,7 @@ use crate::ui_theme::{Face, Ui};
 
 const ROW: f32 = 48.0;
 const ROWS: usize = 22;
+const ROW_ORDER: [usize; ROWS] = [0, 1, 2, 5, 6, 7, 8, 14, 15, 16, 3, 4, 9, 10, 11, 12, 13, 17, 18, 19, 20, 21];
 fn geometry(w: f32, h: f32, center: f32) -> [f32; 4] {
     let width = (w * 0.42).clamp(220.0, 340.0).min(w);
     [if center < 0.5 { w - width } else { 0.0 }, 0.0, width, h]
@@ -40,7 +41,7 @@ pub(super) fn draw(tc: &TouchControls, ed: &Editor, ui: &mut Ui) {
     let p = tc.custom_placement(index);
     let [x, _, width, h] = geometry(ui.w, ui.h, p.center[0]);
     let theme = crate::ui_theme::active_theme();
-    ui.fill(x, 0.0, width, h, theme.bg_solid);
+    ui.rounded(x, 0.0, width, h, 10.0, crate::hud::rgba(20, 20, 20, 250));
     ui.text(
         Face::SemiBold,
         16.0,
@@ -73,20 +74,21 @@ pub(super) fn draw(tc: &TouchControls, ed: &Editor, ui: &mut Ui) {
         "Espessura da borda",
         "Cor do botão (AARRGGBB)",
         "Cor da borda (AARRGGBB)",
-        "Manter pressionado",
-        "Passar toque para câmera",
-        "Ativar ao deslizar",
+        "Alternável (desligado: segurar)",
+        "Mouse pode atravessar",
+        "Deslizável",
         "Mostrar no jogo",
         "Mostrar nos menus",
         "Excluir botão",
         "Clonar botão",
         "Adicionar botão à gaveta",
     ];
-    for (row, label) in labels.iter().enumerate() {
+    for (display_row, &row) in ROW_ORDER.iter().enumerate() {
+        let label = labels[row];
         if row == 21 && button.drawer_id.is_none() {
             continue;
         }
-        let y = top + row as f32 * ROW - ed.side_scroll;
+        let y = top + display_row as f32 * ROW - ed.side_scroll;
         if y + ROW < top || y > h {
             continue;
         }
@@ -126,9 +128,18 @@ pub(super) fn draw(tc: &TouchControls, ed: &Editor, ui: &mut Ui) {
             }
             .into()
         };
+        if (14..=18).contains(&row) {
+            let on = [p.toggleable, p.passthrough, p.swipeable, p.visible_in_game, p.visible_in_menu][row - 14];
+            ui.text(Face::Regular, 14.0, x + 14.0, y + 14.0, u32::MAX, label);
+            let track_x = x + width - 50.0;
+            let track_color = if on { crate::hud::rgba(128, 203, 196, 255) } else { crate::hud::rgba(92, 92, 92, 255) };
+            ui.rounded(track_x, y + 16.0, 36.0, 18.0, 9.0, track_color);
+            ui.rounded(track_x + if on { 18.0 } else { 0.0 }, y + 14.0, 22.0, 22.0, 11.0, if on { crate::hud::rgba(128, 203, 196, 255) } else { crate::hud::rgba(190, 190, 190, 255) });
+            continue;
+        }
         ui.text(
             Face::Regular,
-            10.5,
+            12.0,
             x + 14.0,
             y + 3.0,
             theme.text_muted,
@@ -136,7 +147,7 @@ pub(super) fn draw(tc: &TouchControls, ed: &Editor, ui: &mut Ui) {
         );
         ui.text_clipped(
             Face::Medium,
-            13.0,
+            15.0,
             x + 14.0,
             y + 20.0,
             width - 28.0,
@@ -174,9 +185,9 @@ pub(super) fn touch(
     let [x, _, width, h] = geometry(viewport[0], viewport[1], placement.center[0]);
     if started {
         if point[0] < x || point[0] > x + width || point[1] < 52.0 {
+            if let Err(error) = tc.settings.save() { ed.status_msg = Some(error.to_string()); }
             ed.props_open = false;
-            ed.editing_button_label = false;
-            ed.numeric_property = None;
+            ed.keyboard_finish_requested = ed.editing_button_label;
             ed.side_drag = None;
             return;
         }
@@ -200,12 +211,15 @@ pub(super) fn touch(
     if !ended || moved {
         return;
     }
-    let row = ((point[1] - 52.0 + ed.side_scroll) / ROW) as usize;
-    if row >= ROWS {
+    let display_row = ((point[1] - 52.0 + ed.side_scroll) / ROW) as usize;
+    if display_row >= ROWS {
         return;
     }
+    let row = ROW_ORDER[display_row];
     super::push_undo_snapshot(ed, &tc.settings);
     if row == 0 || numeric_row(row).is_some() {
+        ed.key_picker = false;
+        ed.picker_step = PickerStep::None;
         ed.numeric_property = numeric_row(row);
         ed.property_viewport = viewport;
         ed.button_label_input = if let Some(field) = ed.numeric_property {
@@ -214,6 +228,7 @@ pub(super) fn touch(
             tc.settings.custom_buttons[index].label()
         };
         ed.editing_button_label = true;
+        ed.keyboard_finish_requested = false;
         ed.keyboard_request = true;
     } else if (5..=8).contains(&row) {
         ed.editing_button_label = false;
@@ -322,7 +337,7 @@ pub(super) fn touch_context(
             ed.selected = Some(crate::touch::Control::Move);
             ed.props_open = true;
         }
-        3 => ed.menu_open = true,
+        3 => ed.import_pojav_requested = true,
         4 => {
             ed.save_dialog_open = true;
             ed.save_name_input = if tc.settings.is_default_preset() {
@@ -344,15 +359,7 @@ pub(super) fn touch_context(
             ed.selected = None;
         }
         6 => {
-            let result = serde_json::to_vec_pretty(&tc.settings)
-                .map_err(|e| e.to_string())
-                .and_then(|bytes| {
-                    std::fs::write("pojav-controls-export.json", bytes).map_err(|e| e.to_string())
-                });
-            ed.status_msg = Some(match result {
-                Ok(()) => "Exportado: pojav-controls-export.json na pasta do jogo".into(),
-                Err(e) => e,
-            });
+            ed.export_pojav_requested = true;
         }
         _ => {}
     }

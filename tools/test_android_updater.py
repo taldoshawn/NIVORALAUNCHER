@@ -18,6 +18,7 @@ edition = "2024"
 [dependencies]
 serde_json = "1"
 log = "0.4"
+sha2 = "0.10.9"
 ureq = { version = "2", default-features = false, features = ["json", "tls"] }
 ''')
     source = ROOT / 'crates/horizon-client/src/android/updater.rs'

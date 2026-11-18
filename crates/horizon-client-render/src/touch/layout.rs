@@ -452,6 +452,8 @@ pub struct Settings {
     pub circle_size: f32,
     pub button_scale: f32,
     pub custom_buttons: Vec<super::CustomButton>,
+    #[serde(default)]
+    pub movement_swipe_migrated: bool,
     pub analog_movement: bool,
     pub sprint_button: bool,
     pub sprint_toggle: bool,
@@ -611,6 +613,7 @@ impl Default for Settings {
             circle_size: 32.0,
             button_scale: 1.0,
             custom_buttons: Vec::new(),
+            movement_swipe_migrated: true,
             analog_movement: false,
             sprint_button: true,
             sprint_toggle: false,
@@ -714,6 +717,7 @@ impl Settings {
             p.use_goy_style = true;
             p.visible_in_game = true;
             p.visible_in_menu = true;
+            p.swipeable = matches!(key, "key.keyboard.w" | "key.keyboard.a" | "key.keyboard.s" | "key.keyboard.d");
             button.layouts = [p; 3];
             s.custom_buttons.push(button);
         }
@@ -757,6 +761,16 @@ impl Settings {
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_else(Self::default_pojav);
+        if !s.movement_swipe_migrated {
+            for button in &mut s.custom_buttons {
+                if matches!(button.key.as_str(), "key.keyboard.w" | "key.keyboard.a" | "key.keyboard.s" | "key.keyboard.d") {
+                    for placement in &mut button.layouts {
+                        placement.swipeable = true;
+                    }
+                }
+            }
+            s.movement_swipe_migrated = true;
+        }
         s.sanitize();
         if s.control_style == ControlStyle::GoyControl && s.custom_buttons.is_empty() {
             s.custom_buttons = Self::default_goy_buttons();
@@ -1559,8 +1573,10 @@ impl Settings {
     ) -> std::result::Result<PresetMeta, String> {
         let value: serde_json::Value = serde_json::from_slice(bytes)
             .map_err(|e| format!("Invalid control JSON file: {e}"))?;
-        let mut parsed: Self = serde_json::from_value(value.clone())
-            .map_err(|e| format!("Unrecognized control preset format: {e}"))?;
+        let mut parsed: Self = if value.get("mControlDataList").is_some() || value.is_string() {
+            super::pojav::import(&value)?
+        } else { serde_json::from_value(value.clone())
+            .map_err(|e| format!("Unrecognized control preset format: {e}"))? };
         let style = Self::detect_control_style(&value, &parsed);
         Self::ensure_system_storage(game_home, style);
 

@@ -7618,7 +7618,8 @@ impl Game<'_> {
     }
     /// `Minecraft.pause`: a single-player game with a pausing screen open.
     fn pauses_game(&self) -> bool {
-        self.has_singleplayer_server()
+        !cfg!(target_os = "android")
+            && self.has_singleplayer_server()
             && !self.is_published()
             && self.title.is_none()
             && (matches!(
@@ -8172,6 +8173,7 @@ impl Game<'_> {
             let indicator =
                 horizon_client::touch::attack_indicator(indicator, self.interaction_crosshair());
             let delay = horizon_client::attack_strength::delay(self.main_hand_attack_speed());
+            let indicator = if self.options.legacy18 { 0 } else { indicator };
             let strength = self.hand_strength.scale(0.0, self.main_hand_attack_speed());
             // The 3D crosshair (F3) takes the 2D one's place.
             // Android aiming schemes need a visible reticle in spectator too.
@@ -8181,7 +8183,7 @@ impl Game<'_> {
                 && !self.debug_crosshair()
                 && self.interaction_crosshair()
             {
-                let attack = (indicator == 1).then_some(strength);
+                let attack = (indicator == 1 && !self.options.legacy18).then_some(strength);
                 let full = attack.is_some_and(|a| {
                     hud_layout::full_attack_indicator(a, delay, self.crosshair_living())
                 });
@@ -13484,6 +13486,8 @@ impl Game<'_> {
                     ticks_since_hit: self.kinetic_hit_ticks(a),
                 });
             let pose = match &*stack.item {
+                item if self.options.legacy18 && self.remote.is_some() && self.right
+                    && hand == Hand::Main && item.ends_with("_sword") => ItemPose::LegacyBlock,
                 _ if let Some(pose) = spear => pose,
                 "minecraft:bow" if using => ItemPose::Bow { ticks_used },
                 "minecraft:crossbow" => {

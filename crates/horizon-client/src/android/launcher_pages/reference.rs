@@ -130,13 +130,19 @@ impl Launcher {
         ui.fill(0.0, 0.0, ui.w, ui.h, color::hex(0x0B0B11, 255));
         ui.fill(sidebar, 0.0, 1.0, ui.h, color::hex(0x24232D, 160));
         picture(ui, true, [37.0 * s, 24.0 * s, 53.0 * s, 55.0 * s]);
-        ui.text(
+        // Keep the full brand inside the sidebar at every UI scale.
+        let brand_width = sidebar - 103.0 * s - 18.0 * s;
+        let brand = "Nivora Launcher";
+        let measured = ui.measure(Face::Bold, 23.0 * s, brand);
+        let brand_size = 23.0 * s * (brand_width / measured.max(1.0)).min(1.0);
+        ui.text_clipped(
             Face::Bold,
-            23.0 * s,
+            brand_size,
             103.0 * s,
             29.0 * s,
+            brand_width,
             WHITE,
-            "Pojav Rust",
+            brand,
         );
         ui.text(
             Face::Regular,
@@ -356,6 +362,18 @@ impl Launcher {
             WHITE,
         );
         self.targets.push((choose, Action::GameVersion));
+        let notice = crate::updater::public_notice();
+        if !notice.is_empty() {
+            ui.text_clipped(
+                Face::Medium,
+                13.0 * s,
+                x + 8.0 * s,
+                376.0 * s,
+                (w - 16.0 * s).max(1.0),
+                WHITE,
+                &format!("Comunicado: {notice}"),
+            );
+        }
         let gap = 24.0 * s;
         let cw = (w - gap * 2.0) / 3.0;
         for (i, (name, icon, page, kind)) in [
@@ -379,11 +397,12 @@ impl Launcher {
                 );
             }
             ui.icon(icon, r[0] + 32.0 * s, r[1] + 30.0 * s, 34.0 * s, WHITE);
-            ui.text(
+            ui.text_clipped(
                 Face::SemiBold,
                 21.0 * s,
                 r[0] + 89.0 * s,
                 r[1] + 25.0 * s,
+                (cw - 104.0 * s).max(1.0),
                 WHITE,
                 name,
             );
@@ -402,6 +421,28 @@ impl Launcher {
                 &format!("{count} ativos"),
             );
             self.targets.push((r, Action::Page(page)));
+        }
+        // Reuse existing maintenance flows, with stable touch targets on the home screen.
+        let tools_y = 506.0 * s;
+        let gap = 10.0 * s;
+        let width = (w - gap * 2.0) / 3.0;
+        for (i, (title, action)) in [
+            ("Diagnóstico", Action::Logs),
+            ("Ver atualizações", Action::CheckForUpdates),
+            ("Exportar relatório", Action::ExportDiagnostics),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            small_button(
+                ui,
+                &mut self.targets,
+                [x + i as f32 * (width + gap), tools_y, width, 30.0 * s],
+                title,
+                action,
+                s,
+                false,
+            );
         }
     }
     fn reference_catalog(&mut self, ui: &mut Ui, l: Layout) {
@@ -511,12 +552,16 @@ impl Launcher {
             s,
             true,
         );
+        horizon_client::mod_list::remote::refresh(&self.home);
         // Real results, including built-in native mods. No decorative fake install entries.
         let mut rows: Vec<(String, String, String, Action, Action, bool)> = Vec::new();
         if page == Page::Mods {
             let q = self.catalog.query.to_lowercase();
             for (id, title, description) in horizon_client::mod_list::ANDROID_BUNDLED {
-                if q.is_empty() || title.to_lowercase().contains(&q) || id.contains(&q) {
+                if !horizon_client::mod_list::remote::available(id) { continue; }
+                let (title, description) = horizon_client::mod_list::remote::labels(id, title, description);
+                if horizon_client::mod_list::bundled_visible(id, self.catalog.config.legacy18)
+                    && (q.is_empty() || title.to_lowercase().contains(&q) || id.contains(&q)) {
                     rows.push((
                         id.into(),
                         title.into(),

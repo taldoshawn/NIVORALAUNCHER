@@ -1,0 +1,15 @@
+{
+  "entries": 47,
+  "uncompressed_bytes": 216962269,
+  "findings": [],
+  "debuggable": false,
+  "sha256": "ad5da15933a0a7d79c56166a7ac7dc95e2debc61affe0ec35cad6e61ba62b98e",
+  "bytes": 45118427,
+  "passed": true,
+  "payload_mode": "generated-tables-and-official-downloads",
+  "bundled_game_resources": [
+    "assets/engine-data.zip (generated tables)"
+  ],
+  "distribution_clearance": "Technical payload audit; no legal certification.",
+  "scope": "Archive paths, packaged assets, known credential patterns, personal compiler paths and manifest debuggability; no exhaustive secret-format guarantee."
+}

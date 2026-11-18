@@ -306,13 +306,64 @@ pub fn apply_editor_button_label_output(
     tc: &mut crate::touch::TouchControls,
     out: &Output,
 ) -> bool {
+    apply_editor_button_label_output_at(tc, out, std::path::Path::new("."))
+}
+
+/// All Android editor hosts use the selected field's buffer, never the preset
+/// name as a fallback when a button property is being edited.
+pub fn take_control_editor_keyboard_text(tc: &mut crate::touch::TouchControls) -> Option<String> {
+    let ed = tc.editor.as_mut()?;
+    if !std::mem::take(&mut ed.keyboard_request) { return None; }
+    Some(if ed.editing_button_label {
+        ed.button_label_input.clone()
+    } else if ed.editing_save_desc {
+        ed.save_desc_input.clone()
+    } else {
+        ed.save_name_input.clone()
+    })
+}
+
+/// Shared by the launcher, title screen and game. The caller supplies its game
+/// folder so editing in the launcher cannot save into another profile's cwd.
+pub fn apply_control_editor_output(
+    tc: &mut crate::touch::TouchControls,
+    out: &Output,
+    game_home: &std::path::Path,
+) -> bool {
+    apply_editor_button_label_output_at(tc, out, game_home)
+        || apply_editor_or_preset_output(tc.editor.as_mut(), None, out)
+}
+
+pub fn finish_control_editor_keyboard(tc: &mut crate::touch::TouchControls, game_home: &std::path::Path) -> bool {
+    let finish = tc.editor.as_mut().is_some_and(|ed| std::mem::take(&mut ed.keyboard_finish_requested));
+    if finish { apply_control_editor_output(tc, &Output::Close, game_home); }
+    finish
+}
+
+fn save_control_editor(tc: &mut crate::touch::TouchControls, game_home: &std::path::Path) {
+    let result: std::io::Result<()> = (|| {
+        if !tc.settings.is_default_preset() {
+            tc.settings.save_profile(game_home, &tc.settings.preset_id)?;
+        }
+        tc.settings.save_to(&game_home.join("horizon-touch.json"))
+    })();
+    if let Err(error) = result {
+        if let Some(ed) = tc.editor.as_mut() { ed.status_msg = Some(error.to_string()); }
+    }
+}
+
+fn apply_editor_button_label_output_at(
+    tc: &mut crate::touch::TouchControls,
+    out: &Output,
+    game_home: &std::path::Path,
+) -> bool {
     let Some(ed) = tc.editor.as_mut() else {
         return false;
     };
     if !ed.editing_button_label {
         return false;
     }
-    let max_len = 18;
+    let max_len = 128;
     match out {
         Output::Text(txt) => {
             for ch in txt.chars() {
@@ -346,9 +397,9 @@ pub fn apply_editor_button_label_output(
                     }
                 }
                 if !valid { ed.status_msg = Some("Valor inválido; propriedade preservada.".into()); }
-                else if let Err(error) = tc.settings.save() { ed.status_msg = Some(error.to_string()); }
             }
             ed.numeric_property = None;
+            save_control_editor(tc, game_home);
         }
         return true;
     }
@@ -362,7 +413,9 @@ pub fn apply_editor_button_label_output(
     } else if let Some(c) = sel_ctrl {
         tc.settings.control_labels[c as usize] = new_label;
     }
-    let _ = tc.settings.save();
+    if !tc.editor.as_ref().is_some_and(|ed| ed.editing_button_label) {
+        save_control_editor(tc, game_home);
+    }
     true
 }
 struct RelativeTouch {
@@ -1769,14 +1822,14 @@ impl TouchUi {
         };
 
         let (btn_w, btn_h) = if settings.control_style == ControlStyle::Mcpe {
-            (44.0, 36.0)
+            (20.0, 18.0)
         } else {
-            (48.0, 42.0)
+            (20.0, 18.0)
         };
         let max_btn_x = (w - btn_w - 4.0).max(4.0);
         let max_btn_y = (h - btn_h - 4.0).max(4.0);
-        let btn_x = (settings.floating_menu_pos[0] * w).clamp(4.0, max_btn_x);
-        let btn_y = (settings.floating_menu_pos[1] * h).clamp(4.0, max_btn_y);
+        let btn_x = (w - btn_w) * 0.5;
+        let btn_y = 4.0;
         let btn_rect = [btn_x, btn_y, btn_w, btn_h];
 
         if let Some((drag_id, offset, mut moved)) = self.floating_drag {
@@ -2715,12 +2768,12 @@ impl TouchUi {
         // Draw moveable Floating Menu Button (MCPE 42x42dp stone-bevel H button OR GoyControl 48x42dp '=' pill)
         if !self.expanded && bubble_alpha > 0.001 {
             if settings.control_style == ControlStyle::Mcpe {
-                let btn_w = 44.0;
-                let btn_h = 36.0;
+                let btn_w = 20.0;
+                let btn_h = 18.0;
                 let btn_x =
-                    (settings.floating_menu_pos[0] * w).clamp(4.0, (w - btn_w - 4.0).max(4.0));
+                    (w - btn_w) * 0.5;
                 let btn_y =
-                    (settings.floating_menu_pos[1] * h).clamp(4.0, (h - btn_h - 4.0).max(4.0));
+                    4.0;
                 let scale_rgba = |r: u8, g: u8, bl: u8, al: u8| -> u32 {
                     rgba(r, g, bl, (f32::from(al) * bubble_alpha).round() as u8)
                 };
@@ -2767,12 +2820,12 @@ impl TouchUi {
                     ui.fill(dx_i, dot_y, dot_sz, dot_sz, dot_fg);
                 }
             } else {
-                let btn_w = 48.0;
-                let btn_h = 42.0;
+                let btn_w = 20.0;
+                let btn_h = 18.0;
                 let btn_x =
-                    (settings.floating_menu_pos[0] * w).clamp(6.0, (w - btn_w - 6.0).max(6.0));
+                    (w - btn_w) * 0.5;
                 let btn_y =
-                    (settings.floating_menu_pos[1] * h).clamp(4.0, (h - btn_h - 4.0).max(4.0));
+                    4.0;
                 ui.rounded(
                     btn_x + 1.5,
                     btn_y + 3.0,
@@ -2806,9 +2859,9 @@ impl TouchUi {
                 );
                 ui.icon(
                     Icon::MenuEquals,
-                    btn_x + (btn_w - 22.0) * 0.5,
-                    btn_y + (btn_h - 22.0) * 0.5,
-                    22.0,
+                    btn_x + (btn_w - 12.0) * 0.5,
+                    btn_y + (btn_h - 12.0) * 0.5,
+                    12.0,
                     color::with_alpha(
                         if self.floating_menu {
                             accent_fg
@@ -4863,8 +4916,8 @@ pub fn draw_hud_editor(
         }
     }
 
-    // 5. Draw Magnetic Snap Guides & 8 Interactive Corner/Edge Resize Handles around Selected Component
-    if let Some(([rx, ry, rw, rh], sel_name)) = selected_rect_and_title {
+    // 5. Snap guides and one bottom-right handle for the selected component.
+    if let Some(([rx, ry, rw, rh], _sel_name)) = selected_rect_and_title {
         if tc.settings.snap_to_grid {
             let norm_c = [(rx + rw * 0.5) / w.max(1.0), (ry + rh * 0.5) / h.max(1.0)];
             let norm_s = [rw / w.max(1.0), rh / h.max(1.0)];
@@ -4876,38 +4929,13 @@ pub fn draw_hud_editor(
                 ui.fill(0.0, sy * h - 0.75, w, 1.5, color::with_alpha(accent, 0.75));
             }
         }
-        ui.stroke_rounded(rx - 2.0, ry - 2.0, rw + 4.0, rh + 4.0, 6.0, 1.5, accent);
-        let handles = [
-            (rx - 4.5, ry - 4.5, 9.0, 9.0),
-            (rx + rw - 4.5, ry - 4.5, 9.0, 9.0),
-            (rx - 4.5, ry + rh - 4.5, 9.0, 9.0),
-            (rx + rw - 4.5, ry + rh - 4.5, 9.0, 9.0),
-            (rx + rw - 3.5, ry + rh * 0.5 - 7.0, 7.0, 14.0),
-            (rx - 3.5, ry + rh * 0.5 - 7.0, 7.0, 14.0),
-            (rx + rw * 0.5 - 7.0, ry + rh - 3.5, 14.0, 7.0),
-            (rx + rw * 0.5 - 7.0, ry - 3.5, 14.0, 7.0),
-        ];
-        for (hx, hy, hw, hh) in handles {
-            ui.rounded(hx, hy, hw, hh, 3.0, accent);
-            ui.border(hx, hy, hw, hh, 3.0, accent_fg);
-        }
-        let tag = format!("{sel_name} (Drag corners/edges to resize)");
-        let tw = (ui.measure(Face::SemiBold, 9.5, &tag) + 12.0).min(w - 16.0);
-        let tx = (rx + (rw - tw) * 0.5).clamp(8.0, (w - tw - 8.0).max(8.0));
-        let ty = if ry > 24.0 {
-            ry - 20.0
-        } else {
-            (ry + rh + 5.0).min(h - 20.0)
-        };
-        ui.rounded(tx, ty, tw, 16.0, 5.0, bg_card);
-        ui.border(tx, ty, tw, 16.0, 5.0, accent);
-        ui.centered_fit(
-            Face::SemiBold,
-            9.0,
-            [tx + 3.0, ty, tw - 6.0, 16.0],
-            accent,
-            &tag,
-        );
+        let [hx, hy, hw, hh] = crate::touch::editor::resize_handle([rx, ry, rw, rh], [w, h]);
+        let teal = rgba(128, 203, 196, 255);
+        ui.rounded(hx, hy, hw, hh, 10.0, teal);
+        let ink = rgba(25, 55, 54, 255);
+        for i in 0..6 { ui.fill(hx + 7.0 + i as f32, hy + 7.0 + i as f32, 2.0, 2.0, ink); }
+        ui.fill(hx + 8.0, hy + 13.0, 7.0, 2.0, ink);
+        ui.fill(hx + 13.0, hy + 8.0, 2.0, 7.0, ink);
     }
 
     let pod_y: f32 = 0.0;
@@ -7141,44 +7169,32 @@ pub fn touch_hud_editor(
                                 let _ = tc.settings.save();
                             }
                         }
-                        EditorDragKind::Resize {
-                            mask,
-                            start_pos,
-                            start_size,
-                            start_wr,
-                            start_hr,
-                        } => {
-                            let dx = point[0] - start_pos[0];
-                            let dy = point[1] - start_pos[1];
-                            let mode_idx = tc.settings.mode.index();
-                            let apply_resize = |pl: &mut crate::touch::Placement| {
-                                if mask == 1 || mask == 2 {
-                                    // Horizontal right/left edge handle: adjust width_ratio
-                                    let dir = if mask == 1 { 1.0 } else { -1.0 };
-                                    pl.width_ratio = (start_wr + dir * dx * 8.5).clamp(0.45, 3.0);
-                                } else if mask == 4 || mask == 8 {
-                                    // Vertical bottom/top edge handle: adjust height_ratio
-                                    let dir = if mask == 4 { 1.0 } else { -1.0 };
-                                    pl.height_ratio = (start_hr + dir * dy * 8.5).clamp(0.45, 3.0);
-                                } else {
-                                    // Corner handle: scale overall size + aspect ratio
-                                    let sx = if (mask & 1) != 0 { dx } else { -dx };
-                                    let sy = if (mask & 4) != 0 { dy } else { -dy };
-                                    let diag = (sx + sy) * 0.85;
-                                    pl.size = (start_size + diag).clamp(0.05, 0.44);
+                        EditorDragKind::Resize { start_pos, original, moved } => {
+                            let delta = [point[0] - start_pos[0], point[1] - start_pos[1]];
+                            let moved = moved || (delta[0] * w).hypot(delta[1] * h) >= 4.0;
+                            if moved {
+                                let next = crate::touch::editor::resize_placement(original, delta, w / h.max(1.0));
+                                let mode_idx = tc.settings.mode.index();
+                                let mut center = next.center;
+                                if tc.settings.left_handed { center[0] = 1.0 - center[0]; }
+                                let apply = |stored: &mut crate::touch::Placement| {
+                                    stored.width_ratio = next.width_ratio;
+                                    stored.height_ratio = next.height_ratio;
+                                    stored.center = center;
+                                };
+                                if let Some(idx) = ed.selected_custom {
+                                    if let Some(btn) = tc.settings.custom_buttons.get_mut(idx) { apply(&mut btn.layouts[mode_idx]); }
+                                } else if let Some(c) = ed.selected {
+                                    let slot = tc.settings.slot(c);
+                                    apply(&mut tc.settings.layouts[mode_idx][slot]);
                                 }
-                            };
-                            if let Some(idx) = ed.selected_custom {
-                                if let Some(btn) = tc.settings.custom_buttons.get_mut(idx) {
-                                    apply_resize(&mut btn.layouts[mode_idx]);
-                                }
-                            } else if let Some(c) = ed.selected {
-                                let slot = tc.settings.slot(c);
-                                apply_resize(&mut tc.settings.layouts[mode_idx][slot]);
                             }
                             if ended {
                                 ed.active_drag = None;
-                                let _ = tc.settings.save();
+                                if !moved { ed.props_open = true; ed.side_scroll = 0.0; }
+                                if let Err(error) = tc.settings.save() { ed.status_msg = Some(error.to_string()); }
+                            } else {
+                                ed.active_drag = Some((id, EditorDragKind::Resize { start_pos, original, moved }));
                             }
                         }
                         EditorDragKind::PropsSlider { tab, index, rect } => {
@@ -8384,7 +8400,7 @@ pub fn touch_hud_editor(
             return false;
         }
 
-        // 6. Check 8 Corner & Edge Resize Handles on currently selected component FIRST
+        // 6. Hit-test the one visible resize/properties handle first.
         let aspect = tc.aspect();
         let cur_sel_placement = if let Some(idx) = ed.selected_custom {
             tc.settings
@@ -8397,32 +8413,13 @@ pub fn touch_hud_editor(
         if let Some(sel_p) = cur_sel_placement {
             let [nx, ny, nw, nh] = sel_p.rect(aspect);
             let [rx, ry, rw, rh] = [nx * w, ny * h, nw * w, nh * h];
-            let handle_tests: [([f32; 4], u8); 8] = [
-                ([rx - 10.0, ry - 10.0, 18.0, 18.0], 2 | 8),
-                ([rx + rw - 8.0, ry - 10.0, 18.0, 18.0], 1 | 8),
-                ([rx - 10.0, ry + rh - 8.0, 18.0, 18.0], 2 | 4),
-                ([rx + rw - 8.0, ry + rh - 8.0, 18.0, 18.0], 1 | 4),
-                ([rx + rw - 8.0, ry + rh * 0.5 - 12.0, 16.0, 24.0], 1),
-                ([rx - 8.0, ry + rh * 0.5 - 12.0, 16.0, 24.0], 2),
-                ([rx + rw * 0.5 - 12.0, ry + rh - 8.0, 24.0, 16.0], 4),
-                ([rx + rw * 0.5 - 12.0, ry - 8.0, 24.0, 16.0], 8),
-            ];
-            for (hr, mask) in handle_tests {
-                if inside(hr) {
-                    push_undo_snapshot(&mut ed, &tc.settings);
-                    ed.active_drag = Some((
-                        id,
-                        EditorDragKind::Resize {
-                            mask,
-                            start_pos: point,
-                            start_size: sel_p.size,
-                            start_wr: sel_p.width_ratio,
-                            start_hr: sel_p.height_ratio,
-                        },
-                    ));
-                    tc.clicked = true;
-                    return false;
-                }
+            if inside(crate::touch::editor::resize_handle([rx, ry, rw, rh], [w, h])) {
+                push_undo_snapshot(&mut ed, &tc.settings);
+                ed.active_drag = Some((id, EditorDragKind::Resize {
+                    start_pos: point, original: sel_p, moved: false,
+                }));
+                tc.clicked = true;
+                return false;
             }
         }
 
@@ -8475,7 +8472,7 @@ pub fn touch_hud_editor(
     })();
 
     if !closed {
-        if tap_properties && ed.selected_custom.is_some() { ed.props_open = true; ed.side_scroll = 0.0; }
+        let _ = tap_properties;
         tc.editor = Some(ed);
     }
     closed

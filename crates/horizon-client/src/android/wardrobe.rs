@@ -331,7 +331,10 @@ impl Wardrobe {
 
     fn read_head(&self, key: &str) -> Option<HeadSkin> {
         let bytes = std::fs::read(self.head_path(key)).ok()?;
-        serde_json::from_slice(&bytes).ok()
+        let head: HeadSkin = serde_json::from_slice(&bytes).ok()?;
+        let placeholder = preview::mannequin();
+        let placeholder_head = skin_head::from_rgba(64, 64, placeholder.as_raw());
+        (Some(head) != placeholder_head).then_some(head)
     }
 
     /// Keep the header head in memory and on disk, so the next launch paints
@@ -389,12 +392,6 @@ impl Wardrobe {
                 image.width(),
                 image.height(),
                 image.as_raw(),
-            ));
-        } else if self.head.is_none() {
-            self.set_head(skin_head::from_rgba(
-                skin.width(),
-                skin.height(),
-                skin.as_raw(),
             ));
         }
         let cape = if selection.hide_cape {

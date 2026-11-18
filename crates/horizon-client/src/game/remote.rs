@@ -575,6 +575,7 @@ pub(super) struct Remote {
     /// The player's own shared flag 5 (`Entity.isInvisible`) as the server
     /// last set it.
     pub(super) own_invisible: bool,
+    pub(super) own_on_fire: horizon_client::legacy_rules::RemoteFire,
     /// `LivingEntity.DATA_ARROW_COUNT_ID` and `DATA_STINGER_COUNT_ID` of the
     /// own player, as the server synced them.
     pub(super) own_arrows: i32,
@@ -1024,6 +1025,7 @@ impl Game<'_> {
             level_player_textures: HashMap::new(),
             glowing: Default::default(),
             own_invisible: false,
+            own_on_fire: Default::default(),
             own_arrows: 0,
             own_stingers: 0,
             own_shoulders: [None; 2],
@@ -1738,7 +1740,13 @@ impl Game<'_> {
             CHUNK_PACKETS_PER_FRAME
         };
         let mut chunks = Duration::ZERO;
+        let network_started = Instant::now();
         while let Some(item) = events.pop_front() {
+            if cfg!(target_os = "android") && self.options.legacy18
+                && network_started.elapsed() >= Duration::from_millis(4) {
+                events.push_front(item);
+                break;
+            }
             let chunk = matches!(
                 item,
                 Received::Chunk(_)
@@ -2957,6 +2965,7 @@ impl Game<'_> {
                 if let Some(r) = self.remote.as_mut() {
                     r.carried = Some(0);
                     r.own_invisible = false;
+                    r.own_on_fire.respawn(false);
                     r.online_mode = p.online_mode;
                     r.enforces_secure_chat = p.enforces_secure_chat;
                     r.entity_id = p.player_id;
@@ -2998,6 +3007,7 @@ impl Game<'_> {
                     // (its shared flags) to the new one; without it they reset.
                     if let Some(r) = self.remote.as_mut() {
                         r.own_invisible = false;
+                    r.own_on_fire.respawn(false);
                     }
                 }
                 let dimension_changed = self.dim != Dim::from_id(&p.spawn.dimension);
@@ -3487,9 +3497,11 @@ impl Game<'_> {
                             (0, Value::Byte(flags)) => {
                                 if let Some(pl) = self.player.as_mut() {
                                     pl.sprinting = flags & 0x08 != 0;
+                                    pl.fire_ticks = i32::from(flags & 1 != 0);
                                 }
                                 if let Some(r) = self.remote.as_mut() {
                                     r.own_invisible = flags & 0x20 != 0;
+                                    r.own_on_fire.metadata(*flags);
                                 }
                             }
                             // Entity.DATA_AIR_SUPPLY_ID and
@@ -3784,6 +3796,25 @@ impl Game<'_> {
                 }
             }
             C::EntityEvent(p) => {
+                if self.options.legacy18 && p.event == 2 {
+                    let mut at = None;
+                    if self.remote.as_ref().is_some_and(|r| r.entity_id == p.id) {
+                        if let Some(player) = self.player.as_mut() {
+                            player.health.animate_hurt();
+                            at = Some([player.position.x, player.position.y, player.position.z]);
+                        }
+                    }
+                    if let Some(m) = self.mobs.iter_mut().find(|m| m.id == p.id as u32) {
+                        m.hurt_time = 10;
+                        at = Some([m.position.x, m.position.y, m.position.z]);
+                    }
+                    if let Some(at) = at {
+                        self.audio.play_on(
+                            horizon_client::settings::sound_source("minecraft:entity.player.hurt"),
+                            "minecraft:entity.player.hurt", Some(at), 1.0, 1.0,
+                        );
+                    }
+                }
                 if p.event == super::fireworks::FIREWORK_EXPLODE_EVENT {
                     self.remote_firework_explosion(p.id);
                 }
@@ -5689,8 +5720,9 @@ impl Game<'_> {
             player.pitch = 0.0;
         } else if !dead && !riding {
             player.client_side = true;
+            player.legacy18 = self.options.legacy18;
             player.velocity = player.velocity.add_vector(pushed);
-            let pre_wind_vy = if player.ground.on_ground
+            let pre_wind_vy = if !self.options.legacy18 && player.ground.on_ground
                 && keys.jump
                 && !player.flying
                 && player.velocity.y > 0.45
@@ -5727,6 +5759,11 @@ impl Game<'_> {
                 }
                 .passenger_pose_tick()?;
             }
+        }
+        // Remote fire is an entity metadata flag, not a locally predicted timer.
+        // Reconcile after environmental simulation, including dead/riding ticks.
+        if let Some(r) = &self.remote {
+            player.fire_ticks = r.own_on_fire.ticks();
         }
         // LocalPlayer.onUpdateAbilities: flight turned on or off (a double
         // jump, a spectator, landing) is sent to the server.
@@ -5910,6 +5947,9 @@ impl Game<'_> {
                 .level_players
                 .get(&(m.id as i32))
                 .and_then(|uuid| r.tab_players.get(uuid));
+            if self.options.legacy18 && r.level_players.contains_key(&(m.id as i32)) {
+                continue;
+            }
             let spectator = listed.is_some_and(|t| t.game_mode == SPECTATOR);
             let mob_team = match listed {
                 Some(t) => board.players_team(&t.name),
@@ -7557,6 +7597,10 @@ impl Game<'_> {
             yaw: self.yaw,
             pitch: self.pitch,
         }));
+        if self.options.legacy18 && held.item.ends_with("_sword") {
+            self.with_hand(hand, Game::start_using_item);
+            return true;
+        }
         let Some(info) = self.items().get(&held.item).cloned() else {
             return false;
         };
@@ -7838,7 +7882,7 @@ impl Game<'_> {
         // (ItemStack.isSameItem).
         let item = stack.as_ref().map(|s| Arc::clone(&s.item));
         if let Some(r) = self.remote.as_mut() {
-            if ticks == 0 {
+            if ticks == 0 && !self.options.legacy18 {
                 r.use_item = item;
             } else if r.use_item != item {
                 self.using = None;
@@ -7882,7 +7926,8 @@ impl Game<'_> {
         }
         // A drawn bow, a charging crossbow, a raised shield...: held until
         // the button lets go.
-        if stack.as_ref().is_some_and(|s| self.held_until_released(s)) {
+        if stack.as_ref().is_some_and(|s| self.held_until_released(s)
+            || (self.options.legacy18 && s.item.ends_with("_sword"))) {
             self.using = in_hand.then_some((slot, ticks + 1));
             return;
         }
@@ -8163,7 +8208,7 @@ impl Game<'_> {
         let speed = self
             .own_attribute("minecraft:attack_speed")
             .unwrap_or_else(|| self.main_hand_attack_speed());
-        let strength = self.hand_strength.scale(0.5, speed);
+        let strength = if self.options.legacy18 { 1.0 } else { self.hand_strength.scale(0.5, speed) };
         // Player.attack's damage: a riptide spin's, or this client's own
         // ATTACK_DAMAGE, which the held item and effects don't change here.
         let spin = self.player.as_ref().map_or(0.0, |p| p.auto_spin_attack_dmg);
@@ -8410,6 +8455,11 @@ impl Game<'_> {
         } else {
             return;
         };
+        // A soup plugin can replace the held stack before the first use tick.
+        // End that use immediately; never rebind it to the returned bowl.
+        if self.options.legacy18 && changed && self.using.is_some_and(|(used, _)| used == slot) {
+            self.using = None;
+        }
         let answer = self
             .remote
             .as_mut()

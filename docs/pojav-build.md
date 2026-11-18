@@ -1,4 +1,4 @@
-# Compilação do Pojav Rust
+# Compilação do NIVORA LAUNCHER
 
 O workflow **Android APK** roda nos pushes em `main` e por acionamento manual.
 Ele compila o código deste repositório; não reempacota um APK baixado de terceiros.

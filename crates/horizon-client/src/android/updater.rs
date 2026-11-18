@@ -1,5 +1,7 @@
 //! In-app GitHub release update detection and installer for Android.
 use serde_json::Value;
+use sha2::{Digest, Sha256};
+use std::io::{Read, Write};
 use std::{
     path::{Path, PathBuf},
     sync::{
@@ -9,7 +11,7 @@ use std::{
 };
 
 pub const CURRENT_VERSION: &str = "0.1.0";
-pub const REPO: &str = "taldoshawn/pojav";
+pub const REPO: &str = "taldoshawn/NIVORALAUNCHER";
 
 fn device_abi() -> &'static str {
     match std::env::consts::ARCH {
@@ -42,6 +44,7 @@ pub struct ReleaseInfo {
     pub download_url: Option<String>,
     pub asset_name: String,
     pub size_bytes: u64,
+    pub sha256: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -62,6 +65,38 @@ pub enum UpdateStatus {
     Dismissed,
 }
 
+static PUBLIC_NOTICE: Mutex<String> = Mutex::new(String::new());
+
+pub fn public_notice() -> String {
+    PUBLIC_NOTICE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+}
+
+fn read_community_notice(value: &Value) -> String {
+    value["communityNotice"]
+        .as_str()
+        .unwrap_or("")
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(1500)
+        .collect()
+}
+
+fn check_community_notice() {
+    let result = (|| -> Result<Value, String> {
+        let response = ureq::get("https://nivora-launcher.vercel.app/api/app-policy")
+            .timeout(std::time::Duration::from_secs(5))
+            .call()
+            .map_err(|e| e.to_string())?;
+        serde_json::from_reader(response.into_reader().take(16384)).map_err(|e| e.to_string())
+    })();
+    if let Ok(value) = result {
+        *PUBLIC_NOTICE.lock().unwrap_or_else(|e| e.into_inner()) = read_community_notice(&value);
+    }
+}
+
 static STATUS: Mutex<Option<UpdateStatus>> = Mutex::new(None);
 static CHECKING: AtomicBool = AtomicBool::new(false);
 static DOWNLOADING: AtomicBool = AtomicBool::new(false);
@@ -80,6 +115,80 @@ pub fn set_status(new_status: UpdateStatus) {
 
 pub fn dismiss() {
     set_status(UpdateStatus::Dismissed);
+}
+
+const MAX_APK_BYTES: u64 = 1024 * 1024 * 1024;
+
+fn trusted_asset(info: &ReleaseInfo) -> Result<(), String> {
+    let name = &info.asset_name;
+    if name.is_empty()
+        || name.len() > 180
+        || !name.ends_with(".apk")
+        || !name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b".-_".contains(&b))
+        || name.contains("..")
+    {
+        return Err("Nome inválido do APK na release oficial.".into());
+    }
+    let url = info.download_url.as_deref().unwrap_or("");
+    let prefix = format!("https://github.com/{REPO}/releases/download/");
+    if !url.starts_with(&prefix)
+        || url.contains(['?', '#', '\\'])
+        || url.split('/').any(|part| part == ".." || part == ".")
+        || url.contains("%")
+        || !url.ends_with(&format!("/{name}"))
+    {
+        return Err("O download não pertence às releases oficiais do NIVORA.".into());
+    }
+    if info.size_bytes == 0 || info.size_bytes > MAX_APK_BYTES {
+        return Err("Tamanho do APK fora do limite permitido.".into());
+    }
+    if !info
+        .sha256
+        .as_deref()
+        .is_some_and(|s| s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit()))
+    {
+        return Err("A release precisa informar um SHA-256 válido antes da instalação.".into());
+    }
+    Ok(())
+}
+
+/// Bounded streaming: an interrupted or altered download never becomes an APK.
+fn copy_verified(
+    reader: &mut impl Read,
+    file: &mut impl Write,
+    size: u64,
+    expected: &str,
+    mut progress: impl FnMut(u64),
+) -> Result<(), String> {
+    let mut hash = Sha256::new();
+    let mut buffer = [0u8; 65536];
+    let mut downloaded = 0u64;
+    loop {
+        let n = reader
+            .read(&mut buffer)
+            .map_err(|e| format!("Falha no download: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        downloaded += n as u64;
+        if downloaded > size || downloaded > MAX_APK_BYTES {
+            return Err("O download excedeu o tamanho informado pela release.".into());
+        }
+        file.write_all(&buffer[..n])
+            .map_err(|e| format!("Falha ao gravar o APK: {e}"))?;
+        hash.update(&buffer[..n]);
+        progress(downloaded);
+    }
+    if downloaded != size {
+        return Err("Download incompleto. Tente novamente.".into());
+    }
+    let digest = format!("{:x}", hash.finalize());
+    if !digest.eq_ignore_ascii_case(expected) {
+        return Err("Falha de integridade SHA-256. O APK não será instalado.".into());
+    }
+    Ok(())
 }
 
 /// Parses version string into numeric tuple (major, minor, patch, prerelease).
@@ -132,19 +241,24 @@ pub fn check_for_update() -> Result<Option<ReleaseInfo>, String> {
     let mut download_url = None;
     let mut asset_name = format!("horizon-{tag}.apk");
     let mut size_bytes = 0u64;
+    let mut sha256 = None;
 
     if let Some(assets) = val["assets"].as_array() {
         if let Some(asset) = matching_apk(assets, device_abi()) {
             asset_name = asset["name"].as_str().unwrap_or_default().to_owned();
             download_url = asset["browser_download_url"].as_str().map(str::to_owned);
             size_bytes = asset["size"].as_u64().unwrap_or(0);
+            sha256 = asset["digest"]
+                .as_str()
+                .and_then(|s| s.strip_prefix("sha256:"))
+                .map(str::to_owned);
         }
     }
 
     if download_url.is_none() {
         return Ok(None);
     }
-    Ok(Some(ReleaseInfo {
+    let info = ReleaseInfo {
         version: remote_ver.to_owned(),
         tag_name: tag,
         title: name,
@@ -152,7 +266,10 @@ pub fn check_for_update() -> Result<Option<ReleaseInfo>, String> {
         download_url,
         asset_name,
         size_bytes,
-    }))
+        sha256,
+    };
+    trusted_asset(&info)?;
+    Ok(Some(info))
 }
 
 /// Initiates an update check on a background worker thread.
@@ -161,9 +278,10 @@ pub fn check_in_background() {
         return;
     }
     set_status(UpdateStatus::Checking);
-    std::thread::Builder::new()
+    let worker = std::thread::Builder::new()
         .name("UpdateChecker".into())
         .spawn(|| {
+            check_community_notice();
             match check_for_update() {
                 Ok(Some(info)) => {
                     log::info!("New update available: {}", info.version);
@@ -179,8 +297,13 @@ pub fn check_in_background() {
                 }
             }
             CHECKING.store(false, Ordering::SeqCst);
-        })
-        .ok();
+        });
+    if let Err(error) = worker {
+        CHECKING.store(false, Ordering::SeqCst);
+        set_status(UpdateStatus::Error(format!(
+            "Não foi possível iniciar a verificação: {error}"
+        )));
+    }
 }
 
 /// Downloads the APK and triggers automatic install.
@@ -200,10 +323,11 @@ pub fn download_and_install_in_background(info: ReleaseInfo, home: PathBuf) {
         total: info.size_bytes,
     });
 
-    std::thread::Builder::new()
+    let worker = std::thread::Builder::new()
         .name("UpdateDownloader".into())
         .spawn(move || {
             let res = (|| -> Result<PathBuf, String> {
+                trusted_asset(&info)?;
                 let updates_dir = home.join("updates");
                 std::fs::create_dir_all(&updates_dir).map_err(|e| e.to_string())?;
                 let apk_path = updates_dir.join(&info.asset_name);
@@ -214,40 +338,35 @@ pub fn download_and_install_in_background(info: ReleaseInfo, home: PathBuf) {
                     .call()
                     .map_err(|e| format!("Failed to download update: {e}"))?;
 
-                let total_len = resp
-                    .header("Content-Length")
-                    .and_then(|s| s.parse::<u64>().ok())
-                    .unwrap_or(info.size_bytes);
-
-                let mut reader = resp.into_reader();
-                let mut file = std::fs::File::create(&apk_path).map_err(|e| e.to_string())?;
-                let mut buffer = [0u8; 65536];
-                let mut downloaded = 0u64;
-
-                loop {
-                    use std::io::{Read, Write};
-                    let n = reader
-                        .read(&mut buffer)
-                        .map_err(|e| format!("Download error: {e}"))?;
-                    if n == 0 {
-                        break;
-                    }
-                    file.write_all(&buffer[..n])
-                        .map_err(|e| format!("Disk write error: {e}"))?;
-                    downloaded += n as u64;
-
-                    let progress = if total_len > 0 {
-                        (downloaded as f32 / total_len as f32).clamp(0.0, 1.0)
-                    } else {
-                        0.5
-                    };
-                    set_status(UpdateStatus::Downloading {
-                        progress,
-                        downloaded,
-                        total: total_len,
-                    });
+                let partial = apk_path.with_extension("apk.partial");
+                let download = (|| -> Result<(), String> {
+                    let mut reader = resp.into_reader();
+                    let mut file = std::fs::File::create(&partial).map_err(|e| e.to_string())?;
+                    let mut last_report = std::time::Instant::now();
+                    copy_verified(
+                        &mut reader,
+                        &mut file,
+                        info.size_bytes,
+                        info.sha256.as_deref().ok_or("SHA-256 ausente")?,
+                        |downloaded| {
+                            if last_report.elapsed() >= std::time::Duration::from_millis(100) {
+                                set_status(UpdateStatus::Downloading {
+                                    progress: downloaded as f32 / info.size_bytes as f32,
+                                    downloaded,
+                                    total: info.size_bytes,
+                                });
+                                last_report = std::time::Instant::now();
+                            }
+                        },
+                    )?;
+                    file.sync_all().map_err(|e| e.to_string())?;
+                    drop(file);
+                    std::fs::rename(&partial, &apk_path).map_err(|e| e.to_string())
+                })();
+                if download.is_err() {
+                    let _ = std::fs::remove_file(&partial);
                 }
-                file.sync_all().map_err(|e| e.to_string())?;
+                download?;
                 Ok(apk_path)
             })();
 
@@ -266,8 +385,13 @@ pub fn download_and_install_in_background(info: ReleaseInfo, home: PathBuf) {
                 }
             }
             DOWNLOADING.store(false, Ordering::SeqCst);
-        })
-        .ok();
+        });
+    if let Err(error) = worker {
+        DOWNLOADING.store(false, Ordering::SeqCst);
+        set_status(UpdateStatus::Error(format!(
+            "Não foi possível iniciar o download: {error}"
+        )));
+    }
 }
 
 /// Invokes Android package installer through JNI.
@@ -331,5 +455,137 @@ mod tests {
         assert!(is_newer_version("2.0.0", "1.9.9"));
         assert!(!is_newer_version("1.0.0", "1.0.0"));
         assert!(!is_newer_version("0.9.9", "1.0.0"));
+    }
+}
+
+#[cfg(test)]
+mod integrity_tests {
+    use super::*;
+    use std::io::Cursor;
+    fn release() -> ReleaseInfo {
+        ReleaseInfo {
+            version: "0.1.0".into(),
+            tag_name: "v0.1.0".into(),
+            title: "NIVORA".into(),
+            changelog: String::new(),
+            download_url: Some(format!(
+                "https://github.com/{REPO}/releases/download/v0.1.0/Nivora-arm64-v8a.apk"
+            )),
+            asset_name: "Nivora-arm64-v8a.apk".into(),
+            size_bytes: 3,
+            sha256: Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".into()),
+        }
+    }
+    #[test]
+    fn only_official_bounded_assets_with_safe_names_and_digests_are_accepted() {
+        let original = release();
+        assert!(trusted_asset(&original).is_ok());
+        for name in [
+            "../app.apk",
+            "/app.apk",
+            "a\\app.apk",
+            "..apk",
+            "a.apk/evil",
+            "",
+        ] {
+            assert!(
+                trusted_asset(&ReleaseInfo {
+                    asset_name: name.into(),
+                    ..original.clone()
+                })
+                .is_err()
+            );
+        }
+        for url in [
+            "https://evil.test/app.apk",
+            "http://github.com/taldoshawn/NIVORALAUNCHER/releases/download/v1/Nivora-arm64-v8a.apk",
+            "https://github.com/taldoshawn/NIVORALAUNCHERSITE/releases/download/v1/Nivora-arm64-v8a.apk",
+        ] {
+            assert!(
+                trusted_asset(&ReleaseInfo {
+                    download_url: Some(url.into()),
+                    ..original.clone()
+                })
+                .is_err()
+            );
+        }
+        for size in [0, MAX_APK_BYTES + 1] {
+            assert!(
+                trusted_asset(&ReleaseInfo {
+                    size_bytes: size,
+                    ..original.clone()
+                })
+                .is_err()
+            );
+        }
+        for digest in [None, Some("bad".into()), Some("x".repeat(64))] {
+            assert!(
+                trusted_asset(&ReleaseInfo {
+                    sha256: digest,
+                    ..original.clone()
+                })
+                .is_err()
+            );
+        }
+    }
+    #[test]
+    fn streaming_verifies_known_digest_and_rejects_tampering_truncation_and_excess() {
+        let expected = release().sha256.unwrap();
+        let mut output = Vec::new();
+        copy_verified(&mut Cursor::new(b"abc"), &mut output, 3, &expected, |_| {}).unwrap();
+        assert_eq!(output, b"abc");
+        for input in [b"ab".as_slice(), b"abd", b"abcd"] {
+            assert!(
+                copy_verified(
+                    &mut Cursor::new(input),
+                    &mut Vec::new(),
+                    3,
+                    &expected,
+                    |_| {}
+                )
+                .is_err()
+            );
+        }
+    }
+    #[test]
+    fn interrupted_network_and_full_storage_abort_verification() {
+        struct Broken;
+        impl Read for Broken {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::ConnectionReset,
+                    "interrupted",
+                ))
+            }
+        }
+        let expected = release().sha256.unwrap();
+        assert!(copy_verified(&mut Broken, &mut Vec::new(), 3, &expected, |_| {}).is_err());
+        let mut full = &mut [0u8; 1][..];
+        assert!(copy_verified(&mut Cursor::new(b"abc"), &mut full, 3, &expected, |_| {}).is_err());
+    }
+}
+
+#[cfg(test)]
+mod notice_tests {
+    use super::*;
+    #[test]
+    fn notice_does_not_require_a_newer_version_and_is_bounded_plain_text() {
+        let policy = serde_json::json!({"latestVersionCode":0,"minimumVersionCode":0,"communityNotice":"Lançamento hoje?"});
+        assert_eq!(read_community_notice(&policy), "Lançamento hoje?");
+        assert_eq!(read_community_notice(&serde_json::json!({})), "");
+        assert_eq!(
+            read_community_notice(&serde_json::json!({"communityNotice":false})),
+            ""
+        );
+        assert_eq!(
+            read_community_notice(&serde_json::json!({"communityNotice":"a\nb\u{0000}c"})),
+            "abc"
+        );
+        assert_eq!(
+            read_community_notice(&serde_json::json!({"communityNotice":"á".repeat(1600)}))
+                .chars()
+                .count(),
+            1500
+        );
     }
 }

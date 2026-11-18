@@ -107,3 +107,164 @@ jobs:
         run: |
           test "$(gh release view "v$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = true
           gh release upload "v$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" dist/*
+
+  nivora_arm64:
+    if: inputs.version == '0.1.0-alpha.4' && github.ref == 'refs/heads/codex/nivora-final'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Restore pinned signed APK without private key
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 43792112653 --repo "$GITHUB_REPOSITORY" --dir artifacts
+          mkdir dist
+          python3 tools/apk_signature_patch.py apply artifacts/pojav-rust-40-arm64-v8a/Nivora-Launcher-40-bf20d8eab6fc-arm64-v8a.apk packaging/releases/0.1.0-alpha.4/arm64-v8a.json dist/Nivora-Launcher-0.1.0-alpha.4-arm64-v8a.apk
+          cp packaging/releases/0.1.0-alpha.4/{BUILD.json,SHA256SUMS.txt,arm64-v8a-signature.txt,arm64-v8a-audit.json} dist/
+          cd dist
+          sha256sum -c SHA256SUMS.txt
+      - name: Verify Android signature and publish experimental release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs dist/*.apk
+          gh release create v0.1.0-alpha.4 dist/* --repo "$GITHUB_REPOSITORY" --target bf20d8eab6fc04407e24a91fa35de75974de2c0b --title 'NIVORA LAUNCHER 0.1.0-alpha.4 — ARM64' --notes-file packaging/releases/0.1.0-alpha.4/NOTES.md --prerelease
+
+  universal43:
+    if: inputs.version == '0.1.0-alpha.5' && github.ref == 'refs/heads/codex/nivora-final'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Retrieve and verify signed universal
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 43884038249 --repo "$GITHUB_REPOSITORY" --name nivora-43-universal --dir dist
+          python3 - <<'PYCODE'
+          import hashlib, json, zipfile
+          from pathlib import Path
+          apk = next(Path('dist').glob('*.apk'))
+          assert hashlib.sha256(apk.read_bytes()).hexdigest() == '78ade598c946ed6d24caa796c52e2dd8a3b68de9ae833998c30a4560ce93d36d'
+          with zipfile.ZipFile(apk) as z:
+              assert z.testzip() is None
+              assert z.getinfo('resources.arsc').compress_type == zipfile.ZIP_STORED
+          m=json.loads(Path('dist/BUILD.json').read_text())
+          assert m['signing']=='repository-key' and not m['requires_official_resigning']
+          PYCODE
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs dist/*.apk
+      - name: Publish direct APK download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v0.1.0-alpha.5 dist/*.apk dist/BUILD.json dist/SHA256SUMS.txt dist/signature.txt dist/audit.json --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title 'Nivora Launcher — universal experimental' --notes 'Universal Android 9+. Signed with the permanent NIVORA certificate. Source bfca647; packaging fixes in 7d538ec. ZIP CRC, resource table storage, alignment and signature verified. Physical device installation/gameplay still require validation. Download the APK directly; no artifact ZIP extraction is required.' --prerelease
+
+  universal44:
+    if: inputs.version == '0.1.0-alpha.6' && github.ref == 'refs/heads/codex/nivora-final'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Retrieve and verify signed universal
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 43892549447 --repo "$GITHUB_REPOSITORY" --name nivora-44-universal --dir dist
+          python3 - <<'PYCODE'
+          import hashlib, json, zipfile
+          from pathlib import Path
+          apk = next(Path('dist').glob('*.apk'))
+          assert hashlib.sha256(apk.read_bytes()).hexdigest() == '4d69a9724b2e2b9977a4002e26e374535791a68bb45508fa630f33f928152171'
+          with zipfile.ZipFile(apk) as z:
+              assert z.testzip() is None
+              assert z.getinfo('resources.arsc').compress_type == zipfile.ZIP_STORED
+          m=json.loads(Path('dist/BUILD.json').read_text())
+          assert m['signing']=='repository-key' and not m['requires_official_resigning']
+          PYCODE
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs dist/*.apk
+      - name: Publish direct APK download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v0.1.0-alpha.6 dist/*.apk dist/BUILD.json dist/SHA256SUMS.txt dist/signature.txt dist/audit.json --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title 'Nivora Launcher 0.1.0-alpha.6 — comunicados no aplicativo' --notes 'APK universal Android 9+, com assinatura permanente NIVORA. Inclui avisos publicados do painel na tela inicial do launcher, sem depender de uma versão nova. Origem c485e077623056449877630e470878d726c145df, versionCode 1044. Compilação das quatro arquiteturas, auditoria e certificado verificados. Gameplay e instalação em aparelho físico ainda precisam de validação. Pré-release experimental; recursos base 26.3 e protocolo 47 experimental. Download direto do APK, sem extrair ZIP.' --prerelease
+
+  universal_candidate:
+    if: inputs.version == '0.1.0-alpha.8' && github.ref == 'refs/heads/codex/nivora-final'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      APK_RUN_ID: ${{ inputs.run_id }}
+      APK_RUN_NUMBER: ${{ inputs.run_number }}
+      APK_COMMIT: ${{ inputs.commit }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Validate source build and download signed universal
+        shell: bash
+        run: |
+          [[ "$APK_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$APK_RUN_NUMBER" =~ ^[0-9]+$ ]]
+          [[ "$APK_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          test "$APK_COMMIT" = "$GITHUB_SHA"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$APK_RUN_ID" > run.json
+          python3 - <<'PYCODE'
+          import json, os
+          r=json.load(open('run.json'))
+          assert r['conclusion']=='success' and r['status']=='completed'
+          assert r['head_sha']==os.environ['APK_COMMIT']
+          assert r['run_number']==int(os.environ['APK_RUN_NUMBER'])
+          assert r['path']=='.github/workflows/android-apk.yml'
+          PYCODE
+          gh run download "$APK_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "nivora-$APK_RUN_NUMBER-universal" --dir dist
+      - name: Audit archive and verify permanent certificate
+        run: |
+          python3 - <<'PYCODE'
+          import hashlib, json, os, zipfile
+          from pathlib import Path
+          p=Path('dist')
+          apk=p/f'Nivora-Launcher-{os.environ["APK_RUN_NUMBER"]}-universal.apk'
+          m=json.loads((p/'BUILD.json').read_text())
+          digest=hashlib.sha256(apk.read_bytes()).hexdigest()
+          assert m['sha256']==digest and m['commit']==os.environ['APK_COMMIT']
+          assert m['signing']=='repository-key' and not m['requires_official_resigning']
+          audit=json.loads((p/'audit.json').read_text())
+          assert audit['passed'] and audit['sha256']==digest
+          with zipfile.ZipFile(apk) as z:
+              assert z.testzip() is None
+              assert z.getinfo('resources.arsc').compress_type==zipfile.ZIP_STORED
+          m['version_code']=1000+int(os.environ['APK_RUN_NUMBER'])
+          m['release_version']=os.environ['RELEASE_VERSION']
+          (p/'BUILD.json').write_text(json.dumps(m,indent=2)+'\n')
+          PYCODE
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c 4 dist/*.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs dist/*.apk > dist/signature.txt
+          grep -i 'Signer #1 certificate SHA-256 digest: 97eff0acd8a9dccf3e1719d239cebdb0916a167838e47ea3b7e2305ca2c60ee7' dist/signature.txt
+      - name: Publish experimental update with direct download
+        run: |
+          python3 - <<'PYCODE'
+          import os
+          from pathlib import Path
+          Path('notes.md').write_text(f'''Nova identidade Nivora: ícone Android adaptativo, marca dentro do launcher e banner atualizados. Inclui os módulos PvP nativos (FPS, CPS, Keystrokes, coordenadas e armadura) na seleção 1.8.9. Configuração declarativa remota pelo painel oficial: nomes, descrições, disponibilidade e padrões, com cache offline e preferências locais preservadas. Sem execução remota de código ou compatibilidade Forge implícita.
+
+          APK universal Android 9+, assinatura permanente NIVORA. versionCode {1000+int(os.environ['APK_RUN_NUMBER'])}. Commit {os.environ['APK_COMMIT']}. Compilação, checksum, ZIP, alinhamento, auditoria e certificado verificados. Instalação em aparelho físico e gameplay multiplayer ainda precisam de validação. Pré-release experimental; protocolo 47 experimental.
+          ''')
+          PYCODE
+          gh release create "v$RELEASE_VERSION" dist/*.apk dist/BUILD.json dist/SHA256SUMS.txt dist/signature.txt dist/audit.json --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Nivora Launcher $RELEASE_VERSION — nova identidade Nivora" --notes-file notes.md --prerelease

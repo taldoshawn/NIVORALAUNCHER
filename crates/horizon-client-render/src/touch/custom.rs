@@ -23,6 +23,12 @@ pub struct CustomButton {
 }
 impl CustomButton {
     pub fn new(key: String, index: usize) -> Self {
+        let mut placement = Placement::new(
+            0.68 + (index % 3) as f32 * 0.1,
+            0.35 + (index / 3 % 3) as f32 * 0.12,
+            0.105,
+        );
+        placement.button_color = 0;
         Self {
             key,
             second_key: String::new(),
@@ -32,11 +38,7 @@ impl CustomButton {
             always_visible: false,
             drawer_id: None,
             parent_drawer: None,
-            layouts: [Placement::new(
-                0.68 + (index % 3) as f32 * 0.1,
-                0.35 + (index / 3 % 3) as f32 * 0.12,
-                0.105,
-            ); 3],
+            layouts: [placement; 3],
         }
     }
     pub fn valid_token(token: &str) -> bool {
@@ -830,6 +832,21 @@ mod tests {
         assert!(up.contains(&("key.keyboard.x".into(), false)));
         assert!(up.contains(&("key.mouse.left".into(), false)));
         assert_eq!(t.settings.custom_buttons[0].layouts[0].size, stored);
+    }
+
+    #[test]
+    fn default_movement_slides_between_directions_without_lifting() {
+        let mut t = TouchControls::default();
+        t.viewport(1920, 1080);
+        t.settings = layout::Settings::default_pojav();
+        t.update(1, [0.10, 0.69], true, false);
+        assert_eq!(t.key_events(), [("key.keyboard.w".into(), true)]);
+        t.update(1, [0.04, 0.81], false, false);
+        let events = t.key_events();
+        assert!(events.contains(&("key.keyboard.w".into(), false)));
+        assert!(events.contains(&("key.keyboard.a".into(), true)));
+        t.update(1, [0.04, 0.81], false, true);
+        assert_eq!(t.key_events(), [("key.keyboard.a".into(), false)]);
     }
 
     #[test]

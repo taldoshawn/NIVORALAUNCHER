@@ -4,7 +4,7 @@ package dev.horizon.android;
 public final class HorizonActivity extends android.app.NativeActivity {
     private static final int REQUEST_MOD_PERMISSIONS = 3;
     private static final String RELEASE_SIGNER =
-            "b83e95a3ff2ff82509300f132506d61b1ca3572a61e80b8588f8be815f7b9b05";
+            "97eff0acd8a9dccf3e1719d239cebdb0916a167838e47ea3b7e2305ca2c60ee7";
     private boolean loaded;
     private java.io.File nativeLibrary;
 
@@ -24,9 +24,17 @@ public final class HorizonActivity extends android.app.NativeActivity {
     }
 
     @Override protected void onCreate(android.os.Bundle savedInstanceState) {
+        if (BuildConfig.VERIFY_OFFICIAL_SIGNER && !releaseBuild()) {
+            super.onCreate(savedInstanceState);
+            new android.app.AlertDialog.Builder(this).setTitle("NIVORA LAUNCHER")
+                .setMessage("Assinatura inválida. Instale o APK oficial do NIVORA.")
+                .setCancelable(false).setPositiveButton("Fechar", (d,w) -> finish()).show();
+            return;
+        }
         loadGame();
         super.onCreate(savedInstanceState);
         applyHighRefreshRate(this, 0);
+        UpdatePolicy.check(this);
     }
 
     private void loadGame() {

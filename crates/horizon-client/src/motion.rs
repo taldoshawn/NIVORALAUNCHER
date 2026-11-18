@@ -403,6 +403,8 @@ pub struct PlayerMotion {
     /// server hurts it (`Entity.hurt` does nothing on a client) and ticks its
     /// food (`ServerPlayer.tick`). Its hurt animation comes from the server.
     pub client_side: bool,
+    /// Only the protocol-47 local player uses legacy movement arithmetic.
+    pub legacy18: bool,
     /// The player's entity id (a guest's, set as its turn starts).
     pub entity_id: i32,
     /// The player's client has loaded the world since its last respawn or
@@ -591,6 +593,7 @@ impl PlayerMotion {
             server_copy: false,
             wall_hit_events: None,
             client_side: false,
+            legacy18: false,
             entity_id: 0,
             client_loaded: true,
             block_effects: true,
@@ -602,6 +605,10 @@ impl PlayerMotion {
     }
     /// LivingEntity.aiStep: speeds too small to matter stop.
     fn drop_tiny_velocity(&mut self) {
+        if self.legacy18 {
+            self.velocity = crate::legacy_rules::trim_velocity(self.velocity);
+            return;
+        }
         let v = &mut self.velocity;
         if v.x * v.x + v.z * v.z < 9.0e-6 {
             (v.x, v.z) = (0.0, 0.0);
@@ -1213,7 +1220,11 @@ impl MotionWorld<'_, '_, '_> {
         } else {
             None
         };
-        let modified = crate::input::modify_input(direction, self.player.item_use_speed, sneak);
+        let modified = if self.player.legacy18 {
+            crate::legacy_rules::movement_input(keys, self.player.item_use_speed.is_some())
+        } else {
+            crate::input::modify_input(direction, self.player.item_use_speed, sneak)
+        };
         self.player.applied_input = modified;
         self.simulation_tick_with_fluids(modified, keys.jump)
     }
@@ -1903,7 +1914,16 @@ impl MotionWorld<'_, '_, '_> {
         Ok(())
     }
     pub fn jump_from_ground(&mut self) -> Result<()> {
-        living_motion::jump_from_ground(self)?;
+        if self.player.legacy18 {
+            self.player.velocity.y = crate::legacy_rules::jump_velocity(self.player.status.jump_boost);
+            if self.player.sprinting {
+                let angle = f64::from(self.player.yaw * horizon_core::geometry::trig::DEG_TO_RAD);
+                self.player.velocity.x -= f64::from(horizon_core::geometry::trig::sin(angle) * 0.2);
+                self.player.velocity.z += f64::from(horizon_core::geometry::trig::cos(angle) * 0.2);
+            }
+        } else {
+            living_motion::jump_from_ground(self)?;
+        }
         self.player
             .events
             .push(MotionEvent::Health(crate::health::HealthEvent::Statistic {

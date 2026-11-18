@@ -1,0 +1,14 @@
+{
+  "commit": "bf20d8eab6fc04407e24a91fa35de75974de2c0b",
+  "abi": "arm64-v8a",
+  "package": "dev.taldoshawn.pojav",
+  "signing": "owner-persistent-key",
+  "game_target": "26.3",
+  "legacy_1_8_gameplay": false,
+  "device_tested": false,
+  "sha256": "ad5da15933a0a7d79c56166a7ac7dc95e2debc61affe0ec35cad6e61ba62b98e",
+  "run": "https://github.com/taldoshawn/NIVORALAUNCHER/actions/runs/43792112653",
+  "source_sha256": "363e5e01c9a4bb21e34c200a3f1bcfa51c95e2457bb3069f8222b21b8d8d5ed1",
+  "certificate_sha256": "97eff0acd8a9dccf3e1719d239cebdb0916a167838e47ea3b7e2305ca2c60ee7",
+  "version": "0.1.0-alpha.4"
+}

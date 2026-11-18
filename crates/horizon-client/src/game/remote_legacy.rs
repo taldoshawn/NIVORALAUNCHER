@@ -192,7 +192,10 @@ impl Game<'_> {
                 delta: [0.; 3],
                 yaw,
                 pitch,
-                relatives: i32::from(flags),
+                relatives: i32::from(flags)
+                    | if flags & 1 != 0 { play::relative::DELTA_X } else { 0 }
+                    | if flags & 2 != 0 { play::relative::DELTA_Y } else { 0 }
+                    | if flags & 4 != 0 { play::relative::DELTA_Z } else { 0 },
             }))?,
             Packet::Health {
                 health,
@@ -510,10 +513,17 @@ impl Game<'_> {
                     })
                 }
             }
-            0x0b => C::Animate(play::Animate {
-                id: r.varint()?,
-                action: r.u8()?,
-            }),
+            0x0b => {
+                let entity = r.varint()?;
+                match r.u8()? {
+                    0 => C::SwingAnimation(play::SwingAnimation { id: entity, hand: 0, kind: 1, duration: 6 }),
+                    1 => C::EntityEvent(play::EntityEvent { id: entity, event: 2 }),
+                    2 => C::Animate(play::Animate { id: entity, action: 0 }),
+                    4 => C::Animate(play::Animate { id: entity, action: 1 }),
+                    5 => C::Animate(play::Animate { id: entity, action: 2 }),
+                    _ => return Ok(()),
+                }
+            },
             0x0c => {
                 let entity = r.varint()?;
                 let uuid = r.uuid()?;
@@ -571,6 +581,7 @@ impl Game<'_> {
                 let entity = r.varint()?;
                 let legacy_kind = r.u8()?;
                 let name = match legacy_kind {
+                    30 => "armor_stand",
                     50 => "creeper",
                     51 => "skeleton",
                     52 => "spider",
@@ -603,7 +614,10 @@ impl Game<'_> {
                     100 => "horse",
                     101 => "rabbit",
                     120 => "villager",
-                    _ => return Err("unknown legacy mob type".into()),
+                    _ => {
+                        log::warn!("Ignoring unknown 1.8.9 mob type {legacy_kind} (entity {entity})");
+                        return Ok(());
+                    }
                 };
                 let kind = self
                     .remote
@@ -839,6 +853,40 @@ impl Game<'_> {
                     parameters,
                     players,
                 })
+            }
+            0x20 => {
+                let entity = r.varint()?;
+                let count = r.i32()?;
+                if !(0..=1024).contains(&count) { return Err("invalid legacy attribute count".into()); }
+                let mut values = Vec::new();
+                for _ in 0..count {
+                    let old_name = r.string(64)?;
+                    let base = r.f64()?;
+                    let count = r.count(1024)?;
+                    let mut modifiers = Vec::new();
+                    for _ in 0..count {
+                        let uuid = r.uuid()?;
+                        let amount = r.f64()?;
+                        let operation = i32::from(r.u8()?);
+                        let id = if uuid == 0x662a6b8dda3e4c1c881396ea6097278d {
+                            "minecraft:sprinting".to_owned()
+                        } else { format!("legacy:{uuid:032x}") };
+                        modifiers.push(play::AttributeModifier { id, amount, operation });
+                    }
+                    let name = match old_name.as_str() {
+                        "generic.maxHealth" => "minecraft:max_health",
+                        "generic.followRange" => "minecraft:follow_range",
+                        "generic.knockbackResistance" => "minecraft:knockback_resistance",
+                        "generic.movementSpeed" => "minecraft:movement_speed",
+                        "generic.attackDamage" => "minecraft:attack_damage",
+                        "horse.jumpStrength" => "minecraft:jump_strength",
+                        _ => continue,
+                    };
+                    if let Some(attribute) = self.motion.attributes.id(name) {
+                        values.push(play::AttributeSnapshot { attribute: attribute.registry_id(), base, modifiers });
+                    }
+                }
+                C::UpdateAttributes(play::UpdateAttributes { id: entity, values })
             }
             0x39 => C::PlayerAbilities(play::PlayerAbilities {
                 flags: r.i8()?,

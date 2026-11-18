@@ -1383,16 +1383,14 @@ impl Launcher {
                     };
                 let paused = self.install_paused.load(Ordering::Relaxed);
                 self.install_transfer.observe(done_mib, paused);
-                let sub_left = format!(
-                    "Minecraft 26.3 • Profile {}",
-                    self.catalog.config.profile + 1
-                );
+                let selected = if self.catalog.config.legacy18 { "1.8.9" } else { "26.3" };
+                let sub_left = format!("Servidor {selected} • Perfil {}", self.catalog.config.profile + 1);
                 let sub_right = format!(
                     "{done_mib:.1} / {total_mib:.1} MiB ({:.0}%)",
                     overall * 100.0
                 );
                 let stage_text = match progress.stage {
-                    InstallStage::Download => "Downloading Java Edition 26.3 client.jar",
+                    InstallStage::Download => "Baixando recursos do motor (Java Edition 26.3)",
                     other => other.label(),
                 };
                 draw_my3_progress_view(
@@ -1585,6 +1583,7 @@ impl Launcher {
                 horizon_client::mod_list::ANDROID_BUNDLED
                     .into_iter()
                     .filter(|(id, title, _)| {
+                        if !horizon_client::mod_list::bundled_visible(id, self.catalog.config.legacy18) { return false; }
                         query.is_empty()
                             || id.contains(&query)
                             || title.to_lowercase().contains(&query)
@@ -3720,9 +3719,9 @@ impl Launcher {
             title_x,
             head_y + 2.0,
             my3_text(),
-            "Horizon Android Update",
+            "Atualizações do Nivora",
         );
-        let badge_text = format!("v1.0.0  →  v{}", info.version);
+        let badge_text = format!("Release disponível: v{}", info.version);
         let badge_w = ui.measure(Face::SemiBold, 11.0, &badge_text) + 16.0;
         let badge_r = [title_x, head_y + 24.0, badge_w, 20.0];
         ui.rounded(
@@ -6093,9 +6092,9 @@ impl Launcher {
 
                 let has_err = self.home.join("android-error.txt").is_file();
                 let health_badge = if has_err {
-                    "Crash Log Recorded"
+                    "Erro registrado"
                 } else {
-                    "Runtime Healthy"
+                    "Sem erro registrado"
                 };
 
                 let rows: [(&str, &str, SettingControl<'_>); 7] = [
@@ -7025,10 +7024,10 @@ impl Launcher {
                 self.login.ely = false;
             }
             Some(Action::SavedPage(next)) => {
-                if next && self.login.account_offset + 3 < self.login.saved_accounts.len() + self.login.saved_offline.len() {
-                    self.login.account_offset += 3;
+                if next && self.login.account_offset + 4 < self.login.saved_accounts.len() + self.login.saved_offline.len() {
+                    self.login.account_offset += 4;
                 } else if !next {
-                    self.login.account_offset = self.login.account_offset.saturating_sub(3);
+                    self.login.account_offset = self.login.account_offset.saturating_sub(4);
                 }
             }
             Some(Action::SelectAccount(index)) => {
@@ -7234,6 +7233,7 @@ impl Launcher {
                         horizon_client::mod_list::ANDROID_BUNDLED
                             .iter()
                             .filter(|(id, title, _)| {
+                        if !horizon_client::mod_list::bundled_visible(id, self.catalog.config.legacy18) { return false; }
                                 query.is_empty()
                                     || id.contains(&query)
                                     || title.to_lowercase().contains(&query)
@@ -7939,7 +7939,7 @@ impl Launcher {
                 }
             }
             Some(Action::CheckForUpdates) => {
-                self.catalog.status = "Checking for updates...".into();
+                self.catalog.status = "Verificando releases oficiais…".into();
                 crate::updater::check_in_background();
             }
             Some(Action::FmCloseModal) => {
@@ -8104,14 +8104,7 @@ impl Launcher {
                     t.phase == TouchPhase::Started,
                     ended,
                 );
-                if let Some(ed) = &mut tc.editor
-                    && std::mem::take(&mut ed.keyboard_request)
-                {
-                    let text = if ed.editing_save_desc {
-                        ed.save_desc_input.clone()
-                    } else {
-                        ed.save_name_input.clone()
-                    };
+                if let Some(text) = horizon_client::touch_ui::take_control_editor_keyboard_text(tc) {
                     crate::platform::show(&text);
                 }
                 if ended || closed {
@@ -8209,10 +8202,13 @@ impl Launcher {
             .control_editor
             .as_ref()
             .and_then(|tc| tc.editor.as_ref())
-            .is_some_and(|ed| ed.save_dialog_open);
+            .is_some_and(|ed| ed.save_dialog_open || ed.editing_button_label);
         if self.catalog.editing.is_none() && !editor_typing {
             return;
         }
+        // EditText owns physical keys too while its IME session is active.
+        // The complete buffer reaches the field once through platform::poll.
+        if editor_typing && crate::platform::active() { return; }
         let out = match key.physical_key {
             PhysicalKey::Code(KeyCode::Backspace) => Some(Output::Backspace),
             PhysicalKey::Code(KeyCode::Enter) => {

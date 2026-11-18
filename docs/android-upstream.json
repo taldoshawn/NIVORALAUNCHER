@@ -54,5 +54,20 @@
     "compared_from": "b04786cb2f39b0bab7002d6efd9ed59675351c1b",
     "commits_in_comparison": 337,
     "integration": "No changes in protocol source, datafix source, client networking, remote_legacy, Android launcher or multiplayer screens in this upstream comparison. The selected engine baseline is retained; no upstream merge is included in this protocol47 bug fix."
+  },
+  "nivora_review": {
+    "commit": "4b08a43f1d32c3946f2638850f9d120bc7ff4a26",
+    "date": "2026-11-15",
+    "integration": "Fetched current upstream main and inspected relevant path differences. No broad merge: preserve existing Android/protocol47 fork and scope this candidate to targeted lifecycle/input arithmetic changes."
+  },
+  "nivora_remote_mods_review": {
+    "commit": "a68eb5c673b2767486c105444fe74a328bc18262",
+    "date": "2026-11-17",
+    "integration": "Fetched upstream main and inspected mod list and Android bundled-module path differences. Upstream has no equivalent Android bundle. Preserve the existing fork baseline for this bounded declarative remote-settings change; no engine merge or gameplay changes."
+  },
+  "nivora_brand_review": {
+    "commit": "a68eb5c673b2767486c105444fe74a328bc18262",
+    "date": "2026-11-18",
+    "integration": "Fetched upstream main and inspected Android manifest and launcher art path differences. Preserve this fork baseline: this release only replaces original branding assets and retains application ID and signing identity."
   }
 }

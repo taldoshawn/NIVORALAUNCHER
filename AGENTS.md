@@ -1,6 +1,6 @@
 # Scope of this fork
 
-This repository is taldoshawn/pojav. The upstream map below is retained for reference.
+This repository is taldoshawn/NIVORALAUNCHER. The upstream map below is retained for reference.
 Upstream issue-claim and release-train procedures apply only when contributing back to upstream, not to authorized work in this fork. Do not open issues or contact upstream maintainers automatically.
 Android APK builds are explicitly authorized by the repository owner. Use the existing Android preparation workflow to fetch verified build inputs into ignored `.local/` storage; never commit those inputs or include original game resources in public APKs. Only allowlisted generated engine tables may be packaged. Preserve account authentication and licenses.
 
