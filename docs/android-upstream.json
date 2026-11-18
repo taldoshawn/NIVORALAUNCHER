@@ -64,5 +64,10 @@
     "commit": "a68eb5c673b2767486c105444fe74a328bc18262",
     "date": "2026-11-17",
     "integration": "Fetched upstream main and inspected mod list and Android bundled-module path differences. Upstream has no equivalent Android bundle. Preserve the existing fork baseline for this bounded declarative remote-settings change; no engine merge or gameplay changes."
+  },
+  "nivora_brand_review": {
+    "commit": "a68eb5c673b2767486c105444fe74a328bc18262",
+    "date": "2026-11-18",
+    "integration": "Fetched upstream main and inspected Android manifest and launcher art path differences. Preserve this fork baseline: this release only replaces original branding assets and retains application ID and signing identity."
   }
 }

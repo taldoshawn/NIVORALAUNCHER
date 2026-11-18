@@ -202,7 +202,7 @@ jobs:
           gh release create v0.1.0-alpha.6 dist/*.apk dist/BUILD.json dist/SHA256SUMS.txt dist/signature.txt dist/audit.json --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title 'Nivora Launcher 0.1.0-alpha.6 — comunicados no aplicativo' --notes 'APK universal Android 9+, com assinatura permanente NIVORA. Inclui avisos publicados do painel na tela inicial do launcher, sem depender de uma versão nova. Origem c485e077623056449877630e470878d726c145df, versionCode 1044. Compilação das quatro arquiteturas, auditoria e certificado verificados. Gameplay e instalação em aparelho físico ainda precisam de validação. Pré-release experimental; recursos base 26.3 e protocolo 47 experimental. Download direto do APK, sem extrair ZIP.' --prerelease
 
   universal_candidate:
-    if: inputs.version == '0.1.0-alpha.7' && github.ref == 'refs/heads/codex/nivora-final'
+    if: inputs.version == '0.1.0-alpha.8' && github.ref == 'refs/heads/codex/nivora-final'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -262,9 +262,9 @@ jobs:
           python3 - <<'PYCODE'
           import os
           from pathlib import Path
-          Path('notes.md').write_text(f'''Módulos PvP nativos (FPS, CPS, Keystrokes, coordenadas e armadura) na seleção 1.8.9. Configuração declarativa remota pelo painel oficial: nomes, descrições, disponibilidade e padrões, com cache offline e preferências locais preservadas. Sem execução remota de código ou compatibilidade Forge implícita.
+          Path('notes.md').write_text(f'''Nova identidade Nivora: ícone Android adaptativo, marca dentro do launcher e banner atualizados. Inclui os módulos PvP nativos (FPS, CPS, Keystrokes, coordenadas e armadura) na seleção 1.8.9. Configuração declarativa remota pelo painel oficial: nomes, descrições, disponibilidade e padrões, com cache offline e preferências locais preservadas. Sem execução remota de código ou compatibilidade Forge implícita.
 
           APK universal Android 9+, assinatura permanente NIVORA. versionCode {1000+int(os.environ['APK_RUN_NUMBER'])}. Commit {os.environ['APK_COMMIT']}. Compilação, checksum, ZIP, alinhamento, auditoria e certificado verificados. Instalação em aparelho físico e gameplay multiplayer ainda precisam de validação. Pré-release experimental; protocolo 47 experimental.
           ''')
           PYCODE
-          gh release create "v$RELEASE_VERSION" dist/*.apk dist/BUILD.json dist/SHA256SUMS.txt dist/signature.txt dist/audit.json --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Nivora Launcher $RELEASE_VERSION — mods e configuração remota" --notes-file notes.md --prerelease
+          gh release create "v$RELEASE_VERSION" dist/*.apk dist/BUILD.json dist/SHA256SUMS.txt dist/signature.txt dist/audit.json --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Nivora Launcher $RELEASE_VERSION — nova identidade Nivora" --notes-file notes.md --prerelease
