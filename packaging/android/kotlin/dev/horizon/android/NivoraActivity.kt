@@ -2,7 +2,6 @@ package dev.horizon.android
 
 import android.app.Activity
 import android.content.Intent
-import android.content.res.Configuration
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
@@ -14,7 +13,6 @@ import android.view.WindowInsets
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
-import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -30,52 +28,25 @@ class NivoraActivity : Activity() {
             setPadding(dp(24), dp(24), dp(24), dp(28))
             setBackgroundColor(Color.rgb(15, 13, 23))
         }
-        val banner = FrameLayout(this).apply {
-            background = GradientDrawable().apply {
-                cornerRadius = dp(20).toFloat()
-                setColor(Color.rgb(37, 31, 53))
-            }
-            clipToOutline = true
-        }
-        banner.addView(ImageView(this).apply {
-            setImageResource(R.drawable.nivora_banner)
-            scaleType = ImageView.ScaleType.CENTER_CROP
+        content.addView(ImageView(this).apply {
+            setImageResource(R.drawable.launcher_icon)
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-        }, FrameLayout.LayoutParams(-1, -1))
-        banner.addView(View(this).apply {
-            background = GradientDrawable(
-                GradientDrawable.Orientation.BOTTOM_TOP,
-                intArrayOf(0xE90F0D17.toInt(), 0x240F0D17)
-            )
-        }, FrameLayout.LayoutParams(-1, -1))
-        banner.addView(TextView(this).apply {
+        }, LinearLayout.LayoutParams(dp(54), dp(54)))
+        content.addView(TextView(this).apply {
             text = getString(R.string.nivora_title)
-            textSize = 28f
+            textSize = 31f
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
-            setPadding(dp(18), dp(12), dp(18), dp(16))
-            if (Build.VERSION.SDK_INT >= 28) isAccessibilityHeading = true
-        }, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
-        content.addView(banner, LinearLayout.LayoutParams(-1, dp(120)).apply {
-            bottomMargin = dp(14)
+            setPadding(0, dp(12), 0, dp(20))
         })
         addDestination(content, R.string.nivora_play, "play", true)
-        val destinations = listOf(
-            R.string.nivora_accounts to "accounts",
-            R.string.nivora_wardrobe to "skins",
-            R.string.nivora_mods to "mods",
-            R.string.nivora_packs to "packs",
-            R.string.nivora_shaders to "shaders",
-            R.string.nivora_hud to "hud",
-            R.string.nivora_settings to "settings"
-        )
-        val compact = resources.configuration.screenWidthDp < 560 ||
-            resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
-        for (group in destinations.chunked(if (compact) 1 else 2)) {
-            val row = LinearLayout(this)
-            content.addView(row, LinearLayout.LayoutParams(-1, -2))
-            for ((label, route) in group) addDestination(row, label, route, inRow = true)
-        }
+        addDestination(content, R.string.nivora_accounts, "accounts")
+        addDestination(content, R.string.nivora_wardrobe, "skins")
+        addDestination(content, R.string.nivora_mods, "mods")
+        addDestination(content, R.string.nivora_packs, "packs")
+        addDestination(content, R.string.nivora_shaders, "shaders")
+        addDestination(content, R.string.nivora_hud, "hud")
+        addDestination(content, R.string.nivora_settings, "settings")
         setContentView(ScrollView(this).apply {
             isFillViewport = true
             addView(content)
@@ -89,10 +60,7 @@ class NivoraActivity : Activity() {
         })
     }
 
-    private fun addDestination(
-        container: LinearLayout, label: Int, route: String,
-        primary: Boolean = false, inRow: Boolean = false
-    ) {
+    private fun addDestination(column: LinearLayout, label: Int, route: String, primary: Boolean = false) {
         val surface = GradientDrawable().apply {
             cornerRadius = dp(16).toFloat()
             setColor(if (primary) Color.rgb(105, 70, 203) else Color.rgb(37, 31, 53))
@@ -111,11 +79,8 @@ class NivoraActivity : Activity() {
                     .putExtra("dev.horizon.android.DESTINATION", route))
             }
         }
-        val layout = if (inRow) LinearLayout.LayoutParams(0, -2, 1f)
-            else LinearLayout.LayoutParams(-1, -2)
-        button.minHeight = dp(52)
-        layout.bottomMargin = dp(8)
-        if (inRow && container.childCount > 0) layout.marginStart = dp(8)
-        container.addView(button, layout)
+        column.addView(button, LinearLayout.LayoutParams(-1, dp(52)).apply {
+            bottomMargin = dp(8)
+        })
     }
 }
