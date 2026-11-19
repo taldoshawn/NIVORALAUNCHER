@@ -34,12 +34,6 @@ public final class HorizonActivity extends android.app.NativeActivity {
                 .setCancelable(false).setPositiveButton("Fechar", (d,w) -> finish()).show();
             return;
         }
-        String destination = getIntent().getStringExtra("dev.horizon.android.DESTINATION");
-        try {
-            android.system.Os.setenv("NIVORA_ANDROID_DESTINATION", destination == null ? "play" : destination, true);
-        } catch (android.system.ErrnoException error) {
-            android.util.Log.w("Nivora", "Could not pass launcher destination", error);
-        }
         loadGame();
         super.onCreate(savedInstanceState);
         applyHighRefreshRate(this, 0);

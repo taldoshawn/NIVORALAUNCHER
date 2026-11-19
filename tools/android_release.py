@@ -42,8 +42,7 @@ def main():
     abis = list(dict.fromkeys(args.abi))
     parallel = min(args.parallel, len(abis))
     jobs = args.jobs or max(1, (os.cpu_count() or 2) // parallel)
-    build_file = ROOT / 'packaging/android/build.gradle.kts'
-    version = re.search(r'val baseVersion = "([^"]+)"', build_file.read_text()).group(1)
+    version = re.search(r"versionName '([^']+)'", (ROOT / 'packaging/android/build.gradle').read_text()).group(1)
     output = ROOT / '.local/android/releases' / version
     revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT)
 
