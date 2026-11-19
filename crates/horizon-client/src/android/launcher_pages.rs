@@ -265,6 +265,7 @@ impl AnimState {
 
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum Action {
+    ToggleLanguage,
     Page(Page),
     SettingsCat(SettingsCategory),
     Play,
@@ -1231,7 +1232,10 @@ impl Launcher {
             self.renderer = Some(r);
             return Ok(());
         };
-        let result = self.draw_pages_with(&mut r, &gui);
+        let result = horizon_client::ui_theme::with_launcher_language(
+            self.catalog.config.english_interface,
+            || self.draw_pages_with(&mut r, &gui),
+        );
         if result.is_ok() {
             crate::android::first_frame_shown();
         }
@@ -6248,6 +6252,13 @@ impl Launcher {
             }
             Some(Action::ConfirmExit) => {
                 events.exit();
+            }
+            Some(Action::ToggleLanguage) => {
+                self.catalog.config.english_interface = !self.catalog.config.english_interface;
+                if let Err(error) = self.catalog.config.save(&self.home) {
+                    self.catalog.config.english_interface = !self.catalog.config.english_interface;
+                    self.catalog.status = error;
+                }
             }
             Some(Action::SettingsCat(cat)) => {
                 self.catalog.settings_category = cat;

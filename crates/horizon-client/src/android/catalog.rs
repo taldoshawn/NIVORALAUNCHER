@@ -60,6 +60,7 @@ impl RendererMode {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
+    pub english_interface: bool,
     pub reference_ui_v1: bool,
     pub profile: u32,
     pub proxy: Option<String>,
@@ -121,6 +122,7 @@ fn default_true() -> bool {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            english_interface: false,
             reference_ui_v1: false,
             profile: 0,
             proxy: None,

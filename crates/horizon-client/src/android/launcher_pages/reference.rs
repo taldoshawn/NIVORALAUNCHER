@@ -229,6 +229,9 @@ impl Launcher {
         ));
         let edit = [account[0] - 117.0 * s, 30.0 * s, 106.0 * s, 38.0 * s];
         small_button(ui, &mut self.targets, edit, "Editar HUD", Action::OpenControlEditor, s, false);
+        let language = if self.catalog.config.english_interface { "Português" } else { "English" };
+        let language_rect = [edit[0] - 105.0 * s, edit[1], 96.0 * s, edit[3]];
+        small_button(ui, &mut self.targets, language_rect, language, Action::ToggleLanguage, s, false);
         self.anim.step(
             self.catalog.page,
             self.catalog.settings_category,
