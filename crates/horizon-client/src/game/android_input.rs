@@ -1240,6 +1240,16 @@ impl Game<'_> {
             crate::platform::show(&text);
         }
         if let Some(notice) = crate::documents::poll() {
+            if notice.changed && notice.kind.is_none() && notice.text.starts_with("Imported ") {
+                let home = crate::backend::game_home();
+                self.pad.touch.settings = horizon_client::touch::Settings::load_from(&home.join("horizon-touch.json"));
+                self.settings.touch = self.pad.touch.settings.clone();
+                if let Some(editor) = self.pad.touch.editor.as_mut() {
+                    editor.selected_custom = None;
+                    editor.selected = None;
+                    editor.status_msg = Some(notice.text.clone());
+                }
+            }
             if notice.changed {
                 self.refresh_pack_lists();
                 self.settings.shader_packs =

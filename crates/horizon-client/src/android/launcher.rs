@@ -955,6 +955,17 @@ impl ApplicationHandler for Launcher {
         self.wardrobe.poll();
         if let Some(notice) = crate::documents::poll() {
             self.wardrobe.reload();
+            if notice.changed && notice.kind.is_none() && notice.text.starts_with("Imported ") {
+                if let Some(tc) = &mut self.control_editor {
+                    let home = self.catalog.config.game_home(&self.home);
+                    tc.settings = horizon_client::touch::Settings::load_from(&home.join("horizon-touch.json"));
+                    if let Some(editor) = tc.editor.as_mut() {
+                        editor.selected_custom = None;
+                        editor.selected = None;
+                        editor.status_msg = Some(notice.text.clone());
+                    }
+                }
+            }
             self.catalog.status = notice.text;
             if notice.changed {
                 self.catalog.refresh(&self.home);

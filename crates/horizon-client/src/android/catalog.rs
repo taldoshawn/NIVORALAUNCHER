@@ -122,7 +122,7 @@ fn default_true() -> bool {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            english_interface: false,
+            english_interface: true,
             reference_ui_v1: false,
             profile: 0,
             proxy: None,
