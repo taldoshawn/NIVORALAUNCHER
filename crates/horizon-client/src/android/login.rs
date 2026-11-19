@@ -459,25 +459,25 @@ impl Login {
             let gap = 12.0;
             let cw = ((w - 40.0 - gap) * 0.5).max(120.0);
             let ch = ((content_h - 54.0 - gap) * 0.5).clamp(84.0, 96.0);
-            for (i, (label, note, action, mark)) in [
+            for (i, (label, note, action, icon)) in [
                 (
                     "Microsoft",
                     "Xbox and Minecraft",
                     Action::MicrosoftAccount,
-                    "M",
+                    Icon::MicrosoftGrid,
                 ),
-                ("Ely.by", "Alternative auth", Action::ElySignIn, "E"),
+                ("Ely.by", "Alternative auth", Action::ElySignIn, Icon::Cube),
                 (
                     "Offline",
                     "Play without signing in",
                     Action::OfflineAccount,
-                    "O",
+                    Icon::Gamepad,
                 ),
                 (
                     "Saved accounts",
                     "Switch account",
                     Action::SavedAccounts,
-                    "S",
+                    Icon::Skins,
                 ),
             ]
             .into_iter()
@@ -488,14 +488,7 @@ impl Login {
                 ui.rounded(cx, cy, cw, ch, 10.0, login_surface());
                 ui.border(cx, cy, cw, ch, 10.0, login_border());
                 ui.rounded(cx + 14.0, cy + 14.0, 34.0, 34.0, 11.0, login_accent_soft());
-                ui.text(
-                    Face::SemiBold,
-                    15.0,
-                    cx + 23.0,
-                    cy + 21.0,
-                    login_accent(),
-                    mark,
-                );
+                ui.icon(icon, cx + 21.0, cy + 21.0, 20.0, login_accent());
                 ui.text(
                     Face::SemiBold,
                     15.0,

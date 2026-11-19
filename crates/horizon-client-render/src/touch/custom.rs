@@ -179,9 +179,7 @@ impl CustomButton {
         out
     }
     pub fn label(&self) -> String {
-        // Empty names in a Pojav layout are intentional (for example diagonal
-        // movement hitboxes), rather than a request for an automatic key label.
-        if self.layouts.iter().any(|p| p.pojav_imported) || !self.custom_label.trim().is_empty() {
+        if !self.custom_label.trim().is_empty() {
             return self.custom_label.trim().to_owned();
         }
         let tokens = self.active_tokens();

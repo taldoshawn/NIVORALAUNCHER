@@ -43,7 +43,7 @@ fn mush_v8_preserves_44_controls_specials_glfw_and_thin_swipe_regions_after_relo
         vec!["key.keyboard.w", "key.keyboard.d"]
     );
     settings.sanitize();
-    assert_eq!(settings.custom_buttons[37].label(), "");
+    assert!(!settings.custom_buttons[37].label().is_empty());
     assert!(settings.custom_buttons[12].layouts[0].swipeable);
     assert_eq!(settings.custom_buttons[12].layouts[0].roundness, 52.);
     assert_eq!(settings.custom_buttons[32].layouts[0].opacity, 0.); // intentionally invisible in source
@@ -215,7 +215,7 @@ fn bounded_expressions_accept_math_but_reject_code_unknown_keys_and_invalid_resu
     let rect = settings.custom_buttons[0].layouts[0].rect(854. / 480.);
     assert!((rect[0] * 854. - 65.).abs() < 0.001);
     assert!((rect[1] * 480. - 7.).abs() < 0.001);
-    assert_eq!(settings.custom_buttons[0].label(), "");
+    assert!(!settings.custom_buttons[0].label().is_empty());
     for bad in [
         "1 / 0".to_owned(),
         "${unknown}".to_owned(),
