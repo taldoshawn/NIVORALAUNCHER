@@ -282,11 +282,12 @@ impl Launcher {
         } else {
             "26.3"
         };
-        ui.text(
+        ui.text_clipped(
             Face::Bold,
             42.0 * s,
             x + 34.0 * s,
             205.0 * s,
+            (w - 68.0 * s).max(1.0),
             WHITE,
             &format!("Minecraft {version}"),
         );
