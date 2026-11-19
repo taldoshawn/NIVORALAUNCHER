@@ -16,6 +16,10 @@ val devBuild = providers.gradleProperty("devBuild")
 android {
     namespace = "dev.horizon.android"
     compileSdk = 35
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
     defaultConfig {
         val verifySigner = hasReleaseKey || System.getenv("HORIZON_VERIFY_OFFICIAL_SIGNER") == "1"
         buildConfigField("boolean", "VERIFY_OFFICIAL_SIGNER", verifySigner.toString())
