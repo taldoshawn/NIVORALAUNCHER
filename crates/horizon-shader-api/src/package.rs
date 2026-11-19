@@ -56,12 +56,6 @@ pub fn is_pack(path: &Path) -> bool {
 impl Pack {
     /// Reads only the manifest, without loading or validating shader source.
     pub fn read_manifest(path: &Path) -> Result<Manifest, String> {
-        if path.is_file()
-            && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
-            && let Some(builtin) = builtin_shader_pack(stem)
-        {
-            return Ok(builtin.manifest);
-        }
         let file = std::fs::File::open(if path.is_dir() {
             path.join(MANIFEST)
         } else {
@@ -88,12 +82,6 @@ impl Pack {
     /// Reads `path`: a `.hshader` file, or a folder (its hidden files and
     /// folders, such as `.git`, are skipped).
     pub fn read(path: &Path) -> Result<Pack, String> {
-        if path.is_file()
-            && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
-            && let Some(builtin) = builtin_shader_pack(stem)
-        {
-            return Ok(builtin);
-        }
         let mut files = BTreeMap::new();
         if path.is_dir() {
             read_dir(path, "", &mut files)?;
@@ -120,7 +108,22 @@ impl Pack {
                 }
             }
         }
-        Pack::from_files(files)
+        let pack = Pack::from_files(files)?;
+        // Upgrade only the exact shipped archives with invalid stage sources. A
+        // player's edits, even under the same filename and id, remain authoritative.
+        let legacy_hash = match pack.manifest.id.as_str() {
+            "horizon_reflections" => Some("f2343a540fdc870350387af79ec5d8a9ed21700f505df28ae3f0fbe7d61b1c2c"),
+            "waving_foliage" => Some("c5c767e79744b7ce000dd3a768a691781062a1225743e4003cccc5da5f76a380"),
+            "crystal_water" => Some("e71c17fe66ca50a4bba3c466cf113bce88d60108cb2ae7ef8d4b34dd71ca4a9b"),
+            _ => None,
+        };
+        if path.is_file() && let Some(expected) = legacy_hash
+            && pack.sha256()? == expected
+            && let Some(upgraded) = builtin_shader_pack(&pack.manifest.id)
+        {
+            return Ok(upgraded);
+        }
+        Ok(pack)
     }
 
     /// Checks a pack's files: a manifest, the WGSL it names (as UTF-8),
@@ -841,7 +844,12 @@ fn material(input: MaterialInput) -> Surface {
         let wave_normal = normalize(input.normal + vec3<f32>(wave.x * 9.0, 0.0, wave.y * 9.0));
         let view_dir = normalize(-input.position);
         let fresnel = clamp(0.24 + 0.68 * pow(1.0 - max(dot(wave_normal, view_dir), 0.0), 3.2), 0.22, 0.92);
-        let scene_z = linear_depth(opaque_depth(input.screen));
+        let size = vec2<i32>(textureDimensions(opaque_depth));
+        let pixel = clamp(vec2<i32>(input.screen * vec2<f32>(size)), vec2<i32>(0), size - 1);
+        let depth = textureLoad(opaque_depth, pixel, 0);
+        let clip = vec4<f32>(input.screen * vec2<f32>(2.0, -2.0) + vec2<f32>(-1.0, 1.0), depth, 1.0);
+        let behind = frame.projection_inverse * clip;
+        let scene_z = length(behind.xyz) / max(abs(behind.w), 0.000001);
         let water_depth = max(scene_z - dist, 0.0);
         let depth_absorb = clamp(1.0 - exp(-water_depth * 0.32), 0.0, 1.0);
         let shallow_water = mix(vec3<f32>(0.10, 0.52, 0.66), vec3<f32>(0.04, 0.20, 0.34), night) * input.lightmap;
@@ -940,8 +948,8 @@ name = "Sunlight surface"
 file = "post.wgsl"
 name = "Warm breeze grade"
 
-[[tags]]
-id = "foliage"
+[[materials]]
+id = 1
 sprites = ["minecraft:block/*_leaves", "minecraft:block/short_grass", "minecraft:block/tall_grass*", "minecraft:block/fern*", "minecraft:block/wheat*", "minecraft:block/vine", "minecraft:block/*_sapling", "minecraft:block/dandelion", "minecraft:block/poppy", "minecraft:block/sugar_cane"]
 
 [[options]]
@@ -996,7 +1004,7 @@ fn vertex(input: VertexInput) -> vec3<f32> {
     let gust = 0.75 + 0.35 * sin(frame.time * 0.8 + world.x * 0.12);
     let wave = sin(frame.time * 3.1 + world.x * 0.85 + world.z * 0.65 + world.y * 0.4) * gust;
     let is_biome_foliage = input.tint.g > input.tint.r * 1.06 && input.tint.g > input.tint.b * 1.06;
-    if (input.tags & 1u) != 0u || is_biome_foliage {
+    if input.material == 1u || is_biome_foliage {
         pos.x += wave * wind_strength;
         pos.z += cos(frame.time * 2.4 + world.z * 0.75 + world.x * 0.35) * wind_strength * 0.65;
         pos.y += sin(frame.time * 4.2 + world.x + world.z) * wind_strength * 0.22;
@@ -1014,7 +1022,7 @@ fn vertex(input: VertexInput) -> vec3<f32> {
 fn material(input: MaterialInput) -> Surface {
     let light = pow(input.lightmap, vec3<f32>(contrast));
     let ndotl = max(dot(input.normal, frame.light_direction), 0.0);
-    let is_foliage = (input.tags & 1u) != 0u || (input.tint.g > input.tint.r * 1.05);
+    let is_foliage = input.material == 1u || (input.tint.g > input.tint.r * 1.05);
     let sss = select(vec3<f32>(0.0), vec3<f32>(0.22, 0.38, 0.08) * input.light.y * (0.4 + 0.6 * ndotl), is_foliage);
     let sun_boost = 0.84 + 0.34 * ndotl * input.light.y;
     let col = input.albedo.rgb * input.tint.rgb * (light * sun_boost + sss);
@@ -1230,7 +1238,12 @@ fn material(input: MaterialInput) -> Surface {
     let caustic = pow(max(sin(world.x * 2.6 + frame.time * 2.8) * cos(world.z * 2.6 - frame.time * 2.2), 0.0), 2.0);
     if input.fluid == 1u {
         let dist = length(input.position);
-        let scene_z = linear_depth(opaque_depth(input.screen));
+        let size = vec2<i32>(textureDimensions(opaque_depth));
+        let pixel = clamp(vec2<i32>(input.screen * vec2<f32>(size)), vec2<i32>(0), size - 1);
+        let depth = textureLoad(opaque_depth, pixel, 0);
+        let clip = vec4<f32>(input.screen * vec2<f32>(2.0, -2.0) + vec2<f32>(-1.0, 1.0), depth, 1.0);
+        let behind = frame.projection_inverse * clip;
+        let scene_z = length(behind.xyz) / max(abs(behind.w), 0.000001);
         let water_depth = max(scene_z - dist, 0.0);
         let absorb = clamp(1.0 - exp(-water_depth * 0.26), 0.0, 1.0);
         let shallow = vec3<f32>(0.18, 0.92, 0.86) * input.lightmap;

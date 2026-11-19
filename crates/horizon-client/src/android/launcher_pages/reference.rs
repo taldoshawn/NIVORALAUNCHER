@@ -58,38 +58,13 @@ fn rect(ui: &mut Ui, r: [f32; 4], radius: f32) {
     ui.border(r[0], r[1], r[2], r[3], radius, LINE);
 }
 fn purple(ui: &mut Ui, r: [f32; 4], radius: f32, active: bool) {
-    let (start, end) = if active {
-        (0x7742E0u32, 0x542BB7u32)
+    let surface = if active { 0x653AC5 } else { 0x292237 };
+    ui.rounded(r[0], r[1], r[2], r[3], radius, color::hex(surface, 255));
+    if active {
+        ui.border(r[0], r[1], r[2], r[3], radius, color::hex(0xBC9AFF, 130));
     } else {
-        (0x4B2692, 0x24183D)
-    };
-    ui.rounded(r[0], r[1], r[2], r[3], radius, color::hex(end, 255));
-    let n = 128;
-    for i in 0..n {
-        let t = (i as f32 + 0.5) / n as f32;
-        let dx = r[2] * t;
-        let edge = if dx < radius {
-            radius - dx
-        } else if dx > r[2] - radius {
-            dx - (r[2] - radius)
-        } else {
-            0.0
-        };
-        let inset = radius - (radius * radius - edge * edge).max(0.0).sqrt();
-        let rgb = |shift: u32| {
-            let a = (start >> shift) & 255u32;
-            let b = (end >> shift) & 255u32;
-            ((a as f32 + (b as f32 - a as f32) * t).round() as u32) << shift
-        };
-        ui.fill(
-            r[0] + r[2] * i as f32 / n as f32,
-            r[1] + inset,
-            r[2] / n as f32 + 0.1,
-            r[3] - inset * 2.0,
-            color::hex(rgb(16) | rgb(8) | rgb(0), 255),
-        );
+        ui.rounded(r[0] + 3.0, r[1] + r[3] * 0.3, 3.0, r[3] * 0.4, 1.5, ACCENT);
     }
-    ui.border(r[0], r[1], r[2], r[3], radius, color::hex(0x9871E4, 55));
 }
 fn label(ui: &mut Ui, size: f32, r: [f32; 4], text: &str, primary: bool) {
     ui.centered_fit(
@@ -382,41 +357,15 @@ impl Launcher {
         .enumerate()
         {
             let r = [x + i as f32 * (cw + gap), 398.0 * s, cw, 98.0 * s];
-            rect(ui, r, 23.0 * s);
-            if i == 0 {
-                ui.rounded(
-                    r[0] + 7.0 * s,
-                    r[1] + 94.0 * s,
-                    r[2] - 14.0 * s,
-                    3.0 * s,
-                    1.5 * s,
-                    ACCENT,
-                );
-            }
-            ui.icon(icon, r[0] + 32.0 * s, r[1] + 30.0 * s, 34.0 * s, WHITE);
-            ui.text_clipped(
-                Face::SemiBold,
-                21.0 * s,
-                r[0] + 89.0 * s,
-                r[1] + 25.0 * s,
-                (cw - 104.0 * s).max(1.0),
-                WHITE,
-                name,
-            );
-            let count = self
-                .catalog
-                .local
-                .iter()
-                .filter(|item| item.kind == kind && item.enabled)
-                .count();
-            ui.text(
-                Face::Regular,
-                16.0 * s,
-                r[0] + 89.0 * s,
-                r[1] + 54.0 * s,
-                MUTED,
-                &format!("{count} ativos"),
-            );
+            rect(ui, r, 16.0 * s);
+            let inset = 18.0 * s;
+            ui.icon(icon, r[0] + inset, r[1] + 15.0 * s, 21.0 * s, MUTED);
+            ui.icon(Icon::ArrowRight, r[0] + cw - 31.0 * s, r[1] + 17.0 * s, 15.0 * s, MUTED);
+            ui.text_clipped(Face::SemiBold, 20.0 * s, r[0] + inset, r[1] + 43.0 * s,
+                cw - 2.0 * inset, WHITE, name);
+            let count = self.catalog.local.iter().filter(|item| item.kind == kind && item.enabled).count();
+            ui.text(Face::Regular, 14.0 * s, r[0] + inset, r[1] + 72.0 * s, MUTED,
+                &format!("{count} ativos"));
             self.targets.push((r, Action::Page(page)));
         }
         // Reuse existing maintenance flows, with stable touch targets on the home screen.
@@ -991,7 +940,8 @@ impl Launcher {
                 88.0 * s,
             ];
             rect(ui, r, 16.0 * s);
-            ui.icon(icon, r[0] + 23.0 * s, r[1] + 27.0 * s, 30.0 * s, WHITE);
+            ui.rounded(r[0] + 15.0 * s, r[1] + 22.0 * s, 44.0 * s, 44.0 * s, 12.0 * s, color::hex(0x252034, 255));
+            ui.icon(icon, r[0] + 26.0 * s, r[1] + 33.0 * s, 22.0 * s, color::hex(0xC8AEFF, 255));
             ui.text(
                 Face::SemiBold,
                 18.0 * s,
