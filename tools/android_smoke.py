@@ -64,9 +64,12 @@ try:
     (evidence/'start.txt').write_bytes(started.stdout + started.stderr)
     if started.returncode or b'Error' in started.stdout + started.stderr:
         raise RuntimeError('Activity start failed; see start.txt')
+    engine_process = app + ':engine'
+    if not adb('shell', 'pidof', engine_process, check=False).stdout.strip():
+        engine_process = app
     for _ in range(12):
         time.sleep(5)
-        pid = adb('shell', 'pidof', app, check=False).stdout.decode().strip()
+        pid = adb('shell', 'pidof', engine_process, check=False).stdout.decode().strip()
         if not pid:
             raise RuntimeError('App process exited during startup')
     activity = adb('shell', 'dumpsys', 'activity', 'activities').stdout
@@ -150,7 +153,7 @@ try:
         for i in range(4):
             time.sleep(30)
             (evidence/f'game-{i}.png').write_bytes(adb('exec-out', 'screencap', '-p').stdout)
-            if not adb('shell', 'pidof', app, check=False).stdout.strip():
+            if not adb('shell', 'pidof', engine_process, check=False).stdout.strip():
                 raise RuntimeError('App exited during resource/game probe')
         adb_privilege(True)
         installed_pack = adb('shell', 'cat', data + '/resourcepacks/Storage-Smoke/pack.mcmeta').stdout
@@ -232,7 +235,7 @@ try:
             for i in range(6):
                 time.sleep(30)
                 (evidence/f'world-{i}.png').write_bytes(adb('exec-out', 'screencap', '-p').stdout)
-                if not adb('shell', 'pidof', app, check=False).stdout.strip():
+                if not adb('shell', 'pidof', engine_process, check=False).stdout.strip():
                     raise RuntimeError('App exited during world probe')
             adb('shell', 'input', 'swipe', '1100', '540', '1300', '700', '800')
             time.sleep(10)

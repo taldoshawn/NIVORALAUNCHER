@@ -127,6 +127,20 @@ impl Launcher {
             }
         });
         let mut catalog = Catalog::new(&home);
+        let destination = std::env::var("NIVORA_ANDROID_DESTINATION").unwrap_or_default();
+        catalog.page = match destination.as_str() {
+            "mods" => Page::Mods,
+            "packs" => Page::Packs,
+            "shaders" => Page::Shaders,
+            "skins" => Page::Skins,
+            "settings" => Page::Settings,
+            _ => Page::Play,
+        };
+        let mut login = login::Login::new();
+        if destination == "accounts" {
+            login.visible = true;
+            login.providers = true;
+        }
         let inbox = crate::platform::content_inbox(catalog.config.profile as usize);
         if let Err(error) = crate::content_storage::initialize(&catalog.config.game_home(&home), inbox.as_deref()) {
             log::warn!("Não foi possível preparar as pastas de conteúdo: {error}");
@@ -223,6 +237,12 @@ impl Launcher {
         // the account pill must have the real face instantly, not after a page visit.
         let mut wardrobe = wardrobe::Wardrobe::new(&home);
         wardrobe.open(&catalog.config.name, &catalog.config.microsoft_client_id);
+        let control_editor = (destination == "hud").then(|| {
+            let mut touch = horizon_client::touch::TouchControls::default();
+            touch.settings = horizon_client::touch::Settings::load_from(&game_home.join("horizon-touch.json"));
+            touch.open_editor();
+            touch
+        });
         Self {
             wardrobe,
             home,
@@ -241,7 +261,7 @@ impl Launcher {
             install_cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             install_transfer: Default::default(),
             anim: Default::default(),
-            control_editor: None,
+            control_editor,
             worker: None,
             error: None,
             catalog,
@@ -252,7 +272,7 @@ impl Launcher {
             drag: None,
             chooser: None,
             exit_confirmation: false,
-            login: login::Login::new(),
+            login,
             session_worker: prewarm_session_worker,
             session_ready: false,
             prepared_session: None,
