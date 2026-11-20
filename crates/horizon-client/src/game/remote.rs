@@ -9091,7 +9091,7 @@ impl Game<'_> {
     }
     /// `ConnectScreen`'s Cancel: a server's (single player's server isn't
     /// joined through `ConnectScreen`), until the login is done.
-    fn connect_cancel(&self, (w, h): (f32, f32)) -> Option<(f32, f32)> {
+    pub(super) fn connect_cancel(&self, (w, h): (f32, f32)) -> Option<(f32, f32)> {
         let r = self.remote.as_ref()?;
         (self.player.is_none() && !r.joined && self.integrated.is_none())
             .then(|| horizon_client::level_loading::connect_cancel(w, h))
