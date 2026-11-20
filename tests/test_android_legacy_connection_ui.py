@@ -44,6 +44,16 @@ class ConnectionModalTests(unittest.TestCase):
         self.assertIn("let menu_custom_hit = !blocking_connection_menu", source)
         self.assertIn("let inventory_control = !blocking_connection_menu", source)
 
+    def test_android_system_back_cancels_active_connect_screen(self):
+        source = GAME.read_text(encoding="utf-8")
+        block = source[source.index("// Android's system Back gesture/key"):
+                       source.index("follow_keymap(&mut event);", source.index("// Android's system Back gesture/key"))]
+        self.assertIn('target_os = "android"', block)
+        self.assertIn("self.remote_loading()", block)
+        self.assertIn("self.connect_cancel(self.gui_size()).is_some()", block)
+        self.assertIn("NamedKey::BrowserBack", block)
+        self.assertIn("self.leave_server(None)", block)
+
     def test_legacy_network_identifies_closure_phase_without_offline_fallback(self):
         source = NETWORK.read_text(encoding="utf-8")
         self.assertIn('legacy_transport_error(e, lang, "during login")', source)
