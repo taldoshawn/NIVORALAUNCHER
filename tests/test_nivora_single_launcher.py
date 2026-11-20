@@ -34,6 +34,24 @@ class SingleRustLauncherTests(unittest.TestCase):
         self.assertEqual(found[0].get(ANDROID + "targetActivity"),
                          "dev.horizon.android.HorizonActivity")
 
+    def test_normal_candidate_is_official_and_never_auto_published(self):
+        workflow = (ROOT / ".github/workflows/android-apk.yml").read_text(encoding="utf-8")
+        rust_ui = RUST_HOME.read_text(encoding="utf-8")
+        release_workflow = (ROOT / ".github/workflows/android-release.yml").read_text(encoding="utf-8")
+
+        self.assertIn("app_id=dev.taldoshawn.pojav", workflow)
+        self.assertIn("'package': 'dev.taldoshawn.pojav'", workflow)
+        self.assertNotIn("dev.taldoshawn.nivora.private", workflow)
+        self.assertNotIn("inputs.private_test", workflow)
+        self.assertNotIn("NIVORA_PRIVATE_TEST", workflow)
+        self.assertNotIn("publish_alpha9:", workflow)
+        self.assertNotIn("gh release create", workflow)
+        self.assertIn('"NIVORA LAUNCHER",', rust_ui)
+        self.assertNotIn("TESTE PRIVADO", rust_ui)
+        # Publishing remains a deliberate, separate workflow_dispatch action.
+        self.assertIn("workflow_dispatch:", release_workflow)
+        self.assertIn("universal_candidate:", release_workflow)
+
     def test_landscape_native_entry_and_no_portait_kotlin_activity(self):
         application = ET.parse(MANIFEST).getroot().find("application")
         assert application is not None
