@@ -303,6 +303,14 @@ jobs:
           finally:
               key.unlink(missing_ok=True)
           verification = subprocess.check_output([str(tools/'apksigner'), 'verify', '--verbose', '--print-certs', str(apk)], text=True)
+          expected_certificate = '97eff0acd8a9dccf3e1719d239cebdb0916a167838e47ea3b7e2305ca2c60ee7'
+          actual_certificate = next(
+              (line.split(':', 1)[1].strip().lower() for line in verification.splitlines()
+               if 'Signer #1 certificate SHA-256 digest:' in line),
+              None,
+          )
+          if actual_certificate != expected_certificate:
+              raise SystemExit('The candidate APK is not signed by the permanent NIVORA certificate')
           subprocess.run([str(tools/'zipalign'), '-c', '-P', '16', '4', str(apk)], check=True)
           (apk.parent/'signature.txt').write_text(verification)
           report = audit(apk, tools/'aapt2', public=True, app_id='dev.taldoshawn.pojav')
