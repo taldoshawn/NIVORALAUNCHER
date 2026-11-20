@@ -102,6 +102,7 @@ jobs:
           python3 -m unittest discover -s tests -p 'test_android_universal.py'
           python3 -m unittest discover -s tests -p 'test_android_universal_ci_floor.py'
           python3 -m unittest discover -s tests -p 'test_nivora_single_launcher.py'
+          python3 -m unittest discover -s tests -p 'test_android_legacy_connection_ui.py'
           cargo test -p horizon-protocol --lib --test legacy18 --locked
           cargo test -p horizon-world legacy_network_states --lib --locked
           cargo build -p horizon-protocol --example legacy_server_probe --locked
