@@ -16954,6 +16954,28 @@ impl Game<'_> {
             }
             return;
         }
+        // Android's system Back gesture/key is a reliable escape hatch while
+        // ConnectScreen owns the whole viewport. Vanilla ignores Escape here,
+        // but a mobile user must not be trapped if a HUD preset overlaps Cancel.
+        #[cfg(target_os = "android")]
+        if self.remote_loading()
+            && self.connect_cancel(self.gui_size()).is_some()
+            && let WindowEvent::KeyboardInput { event: key, .. } = &event
+            && key.state == ElementState::Pressed
+            && (matches!(key.physical_key, PhysicalKey::Code(KeyCode::Escape))
+                || matches!(
+                    &key.logical_key,
+                    winit::keyboard::Key::Named(
+                        winit::keyboard::NamedKey::BrowserBack
+                            | winit::keyboard::NamedKey::Escape
+                    )
+                ))
+        {
+            if let Err(error) = self.leave_server(None) {
+                log::warn!("Android Back cancel while connecting: {error}");
+            }
+            return;
+        }
         follow_keymap(&mut event);
         // MacosUtil.setCtrlClickEmulatesRightClick: Control + left click is a right click.
         if let WindowEvent::MouseInput { state, button, .. } = &mut event
