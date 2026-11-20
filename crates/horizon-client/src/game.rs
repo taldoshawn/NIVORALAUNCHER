@@ -15101,6 +15101,18 @@ impl Game<'_> {
             Vec::new()
         };
         let mut hud = horizon_client::spans::time("hud", || self.hud(size));
+        // A blocking multiplayer connection/disconnect screen owns the whole
+        // viewport. Touch HUD controls must not cover or intercept its buttons.
+        // This is a temporary display rule; no saved Pojav HUD is modified.
+        let connection_menu_overlay = self.remote_loading()
+            || self.title.as_ref().is_some_and(|title| {
+                matches!(
+                    &title.mode,
+                    horizon_client::title::Mode::Multiplayer(
+                        horizon_client::multiplayer::Screen::Disconnected { .. }
+                    )
+                )
+            });
         #[cfg(target_os = "android")]
         {
             self.pad.touch.auxiliary_only =
@@ -15141,7 +15153,8 @@ impl Game<'_> {
             self.pad.touch.in_inventory =
                 matches!(self.screen, Screen::Inventory | Screen::Creative);
             self.pad.touch.goy_rendered_by_ui = true;
-            if (in_menu || !self.ui.hide_gui)
+            if !connection_menu_overlay
+                && (in_menu || !self.ui.hide_gui)
                 && (self.player.is_some() || self.settings.keypad.enabled)
                 && (!hud_in_menu
                     || self.android_inventory_controls()
@@ -15162,7 +15175,10 @@ impl Game<'_> {
                 self.pad.touch.break_progress = self.touch_mining_progress();
                 self.pad.touch.draw(&mut hud, &self.gui.atlas);
             }
-            if !self.settings.keypad.enabled && (in_menu || !self.ui.hide_gui) {
+            if !connection_menu_overlay
+                && !self.settings.keypad.enabled
+                && (in_menu || !self.ui.hide_gui)
+            {
                 horizon_client::touch_ui::draw_goy_hud(
                     &self.pad.touch,
                     &mut hud,
@@ -15175,7 +15191,7 @@ impl Game<'_> {
         #[cfg(target_os = "android")]
         {
             self.android_sync_pointer();
-            if self.pad.touch.editor.is_none() {
+            if self.pad.touch.editor.is_none() && !connection_menu_overlay {
                 self.pad.touch_ui.goy_mode = self.pad.touch.settings.control_style
                     == horizon_client::touch::ControlStyle::GoyControl;
                 self.pad
@@ -16717,13 +16733,24 @@ impl Game<'_> {
             {
                 return;
             }
-            let menu_custom_hit = !touch_controls_hidden
+            let blocking_connection_menu = self.remote_loading()
+                || self.title.as_ref().is_some_and(|title| {
+                    matches!(
+                        &title.mode,
+                        horizon_client::title::Mode::Multiplayer(
+                            horizon_client::multiplayer::Screen::Disconnected { .. }
+                        )
+                    )
+                });
+            let menu_custom_hit = !blocking_connection_menu
+                && !touch_controls_hidden
                 && in_menu
                 && !self.settings.keypad.enabled
                 && (self.pad.touch.owns_pointer(touch.id)
                     || (touch.phase == TouchPhase::Started
                         && self.pad.touch.custom_at(overlay_point).is_some()));
-            let inventory_control = !touch_controls_hidden
+            let inventory_control = !blocking_connection_menu
+                && !touch_controls_hidden
                 && (self.android_inventory_controls() || self.pad.touch.in_menu)
                 && (self.pad.touch.owns_pointer(touch.id)
                     || (touch.phase == TouchPhase::Started
