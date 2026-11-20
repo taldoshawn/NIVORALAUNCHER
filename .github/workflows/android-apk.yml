@@ -105,6 +105,7 @@ jobs:
           python3 tools/check_public_tree.py
           python3 -m unittest discover -s tests -p 'test_android_release_audit.py'
           python3 -m unittest discover -s tests -p 'test_android_universal.py'
+          python3 -m unittest discover -s tests -p 'test_android_universal_ci_floor.py'
           python3 -m unittest discover -s tests -p 'test_nivora_single_launcher.py'
           cargo test -p horizon-protocol --lib --test legacy18 --locked
           cargo test -p horizon-world legacy_network_states --lib --locked
