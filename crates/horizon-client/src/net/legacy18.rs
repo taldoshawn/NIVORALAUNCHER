@@ -3,6 +3,24 @@
 use super::*;
 use horizon_protocol::legacy18::{self, bridge::Outbound, play::Packet};
 
+/// A stream close is not a server kick. Identify which phase closed so the
+/// player can distinguish a login/auth/proxy refusal from a play-phase drop.
+fn legacy_transport_error(
+    error: horizon_protocol::Error,
+    lang: &Language,
+    phase: &str,
+) -> Reason {
+    let eof = error.is_end_of_stream();
+    let display = connection_lost(error, lang);
+    if eof {
+        Reason::plain(format!(
+            "{display} (Minecraft 1.8.9: connection closed {phase} without a server reason)"
+        ))
+    } else {
+        Reason::plain(display)
+    }
+}
+
 pub(super) fn run(
     address: &str,
     name: &str,
@@ -20,6 +38,7 @@ pub(super) fn run(
     let (connection, host, port) =
         connect_tcp(&host, port, false, READ_TIMEOUT).map_err(Reason::plain)?;
     *counters.lock().unwrap() = Some(connection.reader.counters.clone());
+    status(send, "Logging in to Minecraft 1.8.9...");
     let outcome = legacy18::login_outcome(connection, &host, port, name, READ_TIMEOUT, |hash| {
         let account = auth.ok_or_else(|| {
             horizon_protocol::Error::new("This server requires a signed-in Minecraft account")
@@ -31,13 +50,14 @@ pub(super) fn run(
             })
         })
     })
-    .map_err(|e| Reason::plain(connection_lost(e, lang)))?;
+    .map_err(|e| legacy_transport_error(e, lang, "during login"))?;
     let (mut connection, profile) = match outcome {
         legacy18::LoginOutcome::Joined(connection, profile) => (connection, profile),
         legacy18::LoginOutcome::Disconnected(reason) => {
             return Ok(Reason::component(&reason, lang));
         }
     };
+    status(send, "Joining Minecraft 1.8.9 world...");
     let mut brand = horizon_protocol::buf::Writer::new();
     brand.varint(0x17);
     brand.string("MC|Brand");
@@ -56,7 +76,7 @@ pub(super) fn run(
     loop {
         let (id, payload) = reader
             .recv()
-            .map_err(|e| Reason::plain(connection_lost(e, lang)))?;
+            .map_err(|e| legacy_transport_error(e, lang, "after login"))?;
         let response = bridge
             .lock()
             .unwrap()
