@@ -169,7 +169,15 @@ jobs:
           app_id=dev.taldoshawn.pojav
           if [[ "$NIVORA_PRIVATE_TEST" == 1 ]]; then app_id=dev.taldoshawn.nivora.private; fi
           universal_args=()
-          if [[ "${{ inputs.universal }}" == 'true' ]]; then universal_args+=(--universal-floor); fi
+          # Pushes on this branch automatically assemble one universal APK.
+          # workflow_dispatch inputs are absent on push events, so testing only
+          # inputs.universal previously gave 32-bit APKs minSdk 27 while 64-bit
+          # APKs used minSdk 28. That changes AndroidManifest.xml and classes.dex,
+          # which must be identical across all APKs assembled into one package.
+          if [[ "${{ inputs.universal }}" == 'true' ]] || \
+             [[ "${{ github.event_name }}" == 'push' && "${{ github.ref }}" == 'refs/heads/codex/private-hud-peripherals' ]]; then
+            universal_args+=(--universal-floor)
+          fi
           python3 tools/android_build.py --abi "$ABI" --public --profile release "${universal_args[@]}" \
             --app-id "$app_id" --sdk "$ANDROID_HOME" \
             --java-home "${JAVA_HOME_17_X64:-$JAVA_HOME}" --gradle "$(command -v gradle)" \
