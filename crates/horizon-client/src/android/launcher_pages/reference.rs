@@ -2,11 +2,11 @@
 use super::*;
 use horizon_client::content_files::Kind;
 use std::sync::OnceLock;
-const WHITE: u32 = color::hex(0xF6F5FA, 255);
-const MUTED: u32 = color::hex(0xA6A4B2, 255);
-const LINE: u32 = color::hex(0x292832, 255);
-const CARD: u32 = color::hex(0x111118, 255);
-const ACCENT: u32 = color::hex(0x8550F6, 255);
+const WHITE: u32 = color::hex(0xF8F7FF, 255);
+const MUTED: u32 = color::hex(0xB4B0C5, 255);
+const LINE: u32 = color::hex(0x3B3550, 255);
+const CARD: u32 = color::hex(0x171321, 255);
+const ACCENT: u32 = color::hex(0x9A70FF, 255);
 struct Art {
     width: u32,
     height: u32,
@@ -54,42 +54,27 @@ fn picture(ui: &mut Ui, brand: bool, r: [f32; 4]) {
     );
 }
 fn rect(ui: &mut Ui, r: [f32; 4], radius: f32) {
-    ui.rounded(r[0], r[1], r[2], r[3], radius, CARD);
+    // Layered glass-dark surfaces stay legible over the detailed hero illustration.
+    ui.rounded(r[0], r[1], r[2], r[3], radius, color::hex(0x110F1B, 255));
+    ui.rounded(
+        r[0] + 1.0, r[1] + 1.0,
+        (r[2] - 2.0).max(0.0), (r[3] - 2.0).max(0.0),
+        (radius - 1.0).max(0.0), CARD,
+    );
     ui.border(r[0], r[1], r[2], r[3], radius, LINE);
 }
 fn purple(ui: &mut Ui, r: [f32; 4], radius: f32, active: bool) {
-    let (start, end) = if active {
-        (0x7742E0u32, 0x542BB7u32)
+    // Use one recognizable gradient-like violet language for primary actions and navigation.
+    if active {
+        ui.rounded(r[0], r[1], r[2], r[3], radius, color::hex(0x5430B1, 255));
+        ui.rounded(r[0], r[1], r[2] * 0.6, r[3], radius, color::hex(0x7244DF, 205));
+        ui.border(r[0], r[1], r[2], r[3], radius, color::hex(0xC1A3FF, 150));
+        ui.fill(r[0] + 18.0, r[1] + 3.0, (r[2] - 36.0).max(0.0), 1.0, color::hex(0xE3D5FF, 100));
     } else {
-        (0x4B2692, 0x24183D)
-    };
-    ui.rounded(r[0], r[1], r[2], r[3], radius, color::hex(end, 255));
-    let n = 128;
-    for i in 0..n {
-        let t = (i as f32 + 0.5) / n as f32;
-        let dx = r[2] * t;
-        let edge = if dx < radius {
-            radius - dx
-        } else if dx > r[2] - radius {
-            dx - (r[2] - radius)
-        } else {
-            0.0
-        };
-        let inset = radius - (radius * radius - edge * edge).max(0.0).sqrt();
-        let rgb = |shift: u32| {
-            let a = (start >> shift) & 255u32;
-            let b = (end >> shift) & 255u32;
-            ((a as f32 + (b as f32 - a as f32) * t).round() as u32) << shift
-        };
-        ui.fill(
-            r[0] + r[2] * i as f32 / n as f32,
-            r[1] + inset,
-            r[2] / n as f32 + 0.1,
-            r[3] - inset * 2.0,
-            color::hex(rgb(16) | rgb(8) | rgb(0), 255),
-        );
+        ui.rounded(r[0], r[1], r[2], r[3], radius, color::hex(0x332048, 255));
+        ui.border(r[0], r[1], r[2], r[3], radius, color::hex(0x9967DC, 125));
+        ui.rounded(r[0] + 3.0, r[1] + r[3] * 0.25, 3.0, r[3] * 0.5, 1.5, ACCENT);
     }
-    ui.border(r[0], r[1], r[2], r[3], radius, color::hex(0x9871E4, 55));
 }
 fn label(ui: &mut Ui, size: f32, r: [f32; 4], text: &str, primary: bool) {
     ui.centered_fit(
@@ -127,16 +112,27 @@ impl Launcher {
     pub(super) fn reference_shell(&mut self, ui: &mut Ui) -> Layout {
         let s = (ui.w / 1232.0).min(ui.h / 576.0).max(0.25);
         let sidebar = 286.0 * s;
-        ui.fill(0.0, 0.0, ui.w, ui.h, color::hex(0x0B0B11, 255));
-        ui.fill(sidebar, 0.0, 1.0, ui.h, color::hex(0x24232D, 160));
+        ui.fill(0.0, 0.0, ui.w, ui.h, color::hex(0x0B0A13, 255));
+        // Persistent Rust launcher: a restrained sidebar rather than a second Android menu.
+        ui.fill(0.0, 0.0, sidebar, ui.h, color::hex(0x10101B, 255));
+        ui.fill(sidebar - 1.0 * s, 0.0, 1.0 * s, ui.h, color::hex(0x5F5077, 135));
+        ui.fill(0.0, 0.0, 4.0 * s, ui.h, color::hex(0x532C9C, 70));
+        ui.rounded(20.0 * s, 16.0 * s, 252.0 * s, 82.0 * s, 17.0 * s, color::hex(0x1D172E, 255));
+        ui.border(20.0 * s, 16.0 * s, 252.0 * s, 82.0 * s, 17.0 * s, color::hex(0x755699, 115));
         picture(ui, true, [37.0 * s, 24.0 * s, 53.0 * s, 55.0 * s]);
-        ui.text(
+        // Keep the full brand inside the sidebar at every UI scale.
+        let brand_width = sidebar - 103.0 * s - 18.0 * s;
+        let brand = "Nivora Launcher";
+        let measured = ui.measure(Face::Bold, 23.0 * s, brand);
+        let brand_size = 23.0 * s * (brand_width / measured.max(1.0)).min(1.0);
+        ui.text_clipped(
             Face::Bold,
-            23.0 * s,
+            brand_size,
             103.0 * s,
             29.0 * s,
+            brand_width,
             WHITE,
-            "Pojav Rust",
+            brand,
         );
         ui.text(
             Face::Regular,
@@ -149,7 +145,7 @@ impl Launcher {
         let pages = [
             (Page::Play, Icon::Play, "Jogar"),
             (Page::Mods, Icon::Cube, "Mods"),
-            (Page::Packs, Icon::Packs, "Resource Packs"),
+            (Page::Packs, Icon::Packs, "Recursos"),
             (Page::Shaders, Icon::Monitor, "Shaders"),
             (Page::Installed, Icon::Grid, "Instalados"),
             (Page::Settings, Icon::Gear, "Configurações"),
@@ -158,7 +154,8 @@ impl Launcher {
             let r = [22.0 * s, (116.0 + i as f32 * 58.0) * s, 250.0 * s, 56.0 * s];
             let on = self.catalog.page == page;
             if on {
-                purple(ui, r, 14.0 * s, false)
+                purple(ui, r, 14.0 * s, false);
+                ui.fill(10.0 * s, r[1] + 15.0 * s, 3.0 * s, 26.0 * s, ACCENT);
             }
             ui.icon(
                 icon,
@@ -175,6 +172,9 @@ impl Launcher {
                 if on { WHITE } else { color::hex(0xCAC7D1, 255) },
                 name,
             );
+            if on {
+                ui.icon(Icon::ChevronDown, r[0] + r[2] - 35.0 * s, r[1] + 21.0 * s, 15.0 * s, color::hex(0xC8A8FF, 255));
+            }
             self.targets.push((r, Action::Page(page)));
         }
         ui.fill(40.0 * s, ui.h - 51.0 * s, 3.0 * s, 23.0 * s, ACCENT);
@@ -184,7 +184,7 @@ impl Launcher {
             54.0 * s,
             ui.h - 47.0 * s,
             MUTED,
-            "v0.1.0",
+            "NIVORA LAUNCHER",
         );
         // Header actions keep actual account names and skin selection.
         let name = self
@@ -194,6 +194,8 @@ impl Launcher {
             .unwrap_or(&self.catalog.config.name);
         let width = (ui.measure(Face::SemiBold, 17.0 * s, name) + 84.0 * s).min(270.0 * s);
         let account = [ui.w - width - 32.0 * s, 24.0 * s, width, 52.0 * s];
+        ui.rounded(account[0], account[1], account[2], account[3], 13.0 * s, color::hex(0x201B2D, 245));
+        ui.border(account[0], account[1], account[2], account[3], 13.0 * s, color::hex(0x675580, 155));
         ui.avatar_head_2d(account[0] + 5.0 * s, account[1] + 4.0 * s, 43.0 * s, name);
         ui.text_clipped(
             Face::SemiBold,
@@ -221,15 +223,11 @@ impl Launcher {
             ],
             Action::Page(Page::Skins),
         ));
-        let edit = [account[0] - 42.0 * s, 30.0 * s, 32.0 * s, 38.0 * s];
-        ui.icon(
-            Icon::Gamepad,
-            edit[0] + 5.0 * s,
-            edit[1] + 8.0 * s,
-            22.0 * s,
-            MUTED,
-        );
-        self.targets.push((edit, Action::OpenControlEditor));
+        let edit = [account[0] - 117.0 * s, 30.0 * s, 106.0 * s, 38.0 * s];
+        small_button(ui, &mut self.targets, edit, "Editar HUD", Action::OpenControlEditor, s, false);
+        let language = if self.catalog.config.english_interface { "Português" } else { "English" };
+        let language_rect = [edit[0] - 105.0 * s, edit[1], 96.0 * s, edit[3]];
+        small_button(ui, &mut self.targets, language_rect, language, Action::ToggleLanguage, s, false);
         self.anim.step(
             self.catalog.page,
             self.catalog.settings_category,
@@ -266,7 +264,19 @@ impl Launcher {
         let Layout { s, x, w } = l;
         let hero = [x, 106.0 * s, w, 264.0 * s];
         picture(ui, false, hero);
-        ui.border(x, hero[1], w, hero[3], 28.0 * s, LINE);
+        // Quiet left-to-right scrim protects text contrast on bright shader/landscape artwork.
+        // Keep the right side unobstructed to show the actual launcher illustration.
+        for (i, alpha) in [190_u8, 128, 74, 28].into_iter().enumerate() {
+            ui.fill(
+                x + i as f32 * (w * 0.13), hero[1],
+                w * 0.13 + 1.0, hero[3],
+                color::hex(0x0A0920, alpha),
+            );
+        }
+        ui.border(x, hero[1], w, hero[3], 28.0 * s, color::hex(0x75609A, 160));
+        ui.rounded(x + 33.0 * s, hero[1] + 37.0 * s, 4.0 * s, 16.0 * s, 2.0 * s, ACCENT);
+        ui.text(Face::SemiBold, 12.0 * s, x + 47.0 * s, hero[1] + 38.0 * s,
+            color::hex(0xD3C8F8, 255), "NIVORA  /  RUST CLIENT");
         ui.text(
             Face::Medium,
             17.0 * s,
@@ -280,11 +290,12 @@ impl Launcher {
         } else {
             "26.3"
         };
-        ui.text(
+        ui.text_clipped(
             Face::Bold,
             42.0 * s,
             x + 34.0 * s,
             205.0 * s,
+            (w - 68.0 * s).max(1.0),
             WHITE,
             &format!("Minecraft {version}"),
         );
@@ -322,6 +333,9 @@ impl Launcher {
             cx += cw + 12.0 * s;
         }
         let play = [x + w - 300.0 * s, 255.0 * s, 196.0 * s, 71.0 * s];
+        // A clear primary action with deliberate contrast to the secondary selector.
+        ui.rounded(play[0] - 3.0 * s, play[1] - 3.0 * s, play[2] + 6.0 * s, play[3] + 6.0 * s,
+            21.0 * s, color::hex(0x6B3AD6, 65));
         purple(ui, play, 19.0 * s, true);
         ui.icon(
             Icon::Play,
@@ -356,52 +370,65 @@ impl Launcher {
             WHITE,
         );
         self.targets.push((choose, Action::GameVersion));
+        let notice = crate::updater::public_notice();
+        if !notice.is_empty() {
+            ui.text_clipped(
+                Face::Medium,
+                13.0 * s,
+                x + 8.0 * s,
+                376.0 * s,
+                (w - 16.0 * s).max(1.0),
+                WHITE,
+                &format!("Comunicado: {notice}"),
+            );
+        }
         let gap = 24.0 * s;
         let cw = (w - gap * 2.0) / 3.0;
         for (i, (name, icon, page, kind)) in [
             ("Mods", Icon::Puzzle, Page::Mods, Kind::Mods),
-            ("Resource Packs", Icon::Packs, Page::Packs, Kind::Packs),
+            ("Pacotes de recursos", Icon::Packs, Page::Packs, Kind::Packs),
             ("Shaders", Icon::Monitor, Page::Shaders, Kind::Shaders),
         ]
         .into_iter()
         .enumerate()
         {
             let r = [x + i as f32 * (cw + gap), 398.0 * s, cw, 98.0 * s];
-            rect(ui, r, 23.0 * s);
-            if i == 0 {
-                ui.rounded(
-                    r[0] + 7.0 * s,
-                    r[1] + 94.0 * s,
-                    r[2] - 14.0 * s,
-                    3.0 * s,
-                    1.5 * s,
-                    ACCENT,
-                );
-            }
-            ui.icon(icon, r[0] + 32.0 * s, r[1] + 30.0 * s, 34.0 * s, WHITE);
-            ui.text(
-                Face::SemiBold,
-                21.0 * s,
-                r[0] + 89.0 * s,
-                r[1] + 25.0 * s,
-                WHITE,
-                name,
-            );
-            let count = self
-                .catalog
-                .local
-                .iter()
-                .filter(|item| item.kind == kind && item.enabled)
-                .count();
-            ui.text(
-                Face::Regular,
-                16.0 * s,
-                r[0] + 89.0 * s,
-                r[1] + 54.0 * s,
-                MUTED,
-                &format!("{count} ativos"),
-            );
+            rect(ui, r, 16.0 * s);
+            ui.rounded(r[0] + 14.0 * s, r[1] + 12.0 * s, 32.0 * s, 30.0 * s,
+                9.0 * s, color::hex(0x34234C, 255));
+            ui.fill(r[0] + 18.0 * s, r[1] + 2.0 * s, (cw - 36.0 * s).max(0.0),
+                2.0 * s, color::hex(0x8157CE, 120));
+            let inset = 18.0 * s;
+            ui.icon(icon, r[0] + inset + 5.0 * s, r[1] + 16.0 * s, 21.0 * s, WHITE);
+            ui.icon(Icon::ArrowRight, r[0] + cw - 31.0 * s, r[1] + 17.0 * s, 15.0 * s, MUTED);
+            ui.text_clipped(Face::SemiBold, 20.0 * s, r[0] + inset, r[1] + 43.0 * s,
+                cw - 2.0 * inset, WHITE, name);
+            let count = self.catalog.local.iter().filter(|item| item.kind == kind && item.enabled).count();
+            ui.text(Face::Regular, 14.0 * s, r[0] + inset, r[1] + 72.0 * s, MUTED,
+                &format!("{count} ativos"));
             self.targets.push((r, Action::Page(page)));
+        }
+        // Reuse existing maintenance flows, with stable touch targets on the home screen.
+        let tools_y = 506.0 * s;
+        let gap = 10.0 * s;
+        let width = (w - gap * 2.0) / 3.0;
+        for (i, (title, action)) in [
+            ("Diagnóstico", Action::Logs),
+            ("Ver atualizações", Action::CheckForUpdates),
+            ("Exportar relatório", Action::ExportDiagnostics),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            small_button(
+                ui,
+                &mut self.targets,
+                [x + i as f32 * (width + gap), tools_y, width, 30.0 * s],
+                title,
+                action,
+                s,
+                false,
+            );
         }
     }
     fn reference_catalog(&mut self, ui: &mut Ui, l: Layout) {
@@ -511,12 +538,16 @@ impl Launcher {
             s,
             true,
         );
+        horizon_client::mod_list::remote::refresh(&self.home);
         // Real results, including built-in native mods. No decorative fake install entries.
         let mut rows: Vec<(String, String, String, Action, Action, bool)> = Vec::new();
         if page == Page::Mods {
             let q = self.catalog.query.to_lowercase();
             for (id, title, description) in horizon_client::mod_list::ANDROID_BUNDLED {
-                if q.is_empty() || title.to_lowercase().contains(&q) || id.contains(&q) {
+                if !horizon_client::mod_list::remote::available(id) { continue; }
+                let (title, description) = horizon_client::mod_list::remote::labels(id, title, description);
+                if horizon_client::mod_list::bundled_visible(id, self.catalog.config.legacy18)
+                    && (q.is_empty() || title.to_lowercase().contains(&q) || id.contains(&q)) {
                     rows.push((
                         id.into(),
                         title.into(),
@@ -949,7 +980,8 @@ impl Launcher {
                 88.0 * s,
             ];
             rect(ui, r, 16.0 * s);
-            ui.icon(icon, r[0] + 23.0 * s, r[1] + 27.0 * s, 30.0 * s, WHITE);
+            ui.rounded(r[0] + 15.0 * s, r[1] + 22.0 * s, 44.0 * s, 44.0 * s, 12.0 * s, color::hex(0x252034, 255));
+            ui.icon(icon, r[0] + 26.0 * s, r[1] + 33.0 * s, 22.0 * s, color::hex(0xC8AEFF, 255));
             ui.text(
                 Face::SemiBold,
                 18.0 * s,
@@ -976,5 +1008,12 @@ impl Launcher {
             );
             self.targets.push((r, action));
         }
+        let editor = [x, 430.0*s, w, 70.0*s];
+        rect(ui, editor, 16.0*s);
+        ui.icon(Icon::Gamepad, x+23.0*s, editor[1]+21.0*s, 28.0*s, ACCENT);
+        ui.text(Face::SemiBold, 18.0*s, x+76.0*s, editor[1]+12.0*s, WHITE, "Editor de HUD");
+        ui.text_clipped(Face::Regular, 12.0*s, x+76.0*s, editor[1]+39.0*s, (w-110.0*s).max(1.0), MUTED, "Editar botões, importar Pojav e organizar seus controles");
+        self.targets.push((editor, Action::OpenControlEditor));
+
     }
 }

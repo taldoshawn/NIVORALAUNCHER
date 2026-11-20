@@ -39,13 +39,19 @@ impl Camera {
 
 /// Original neutral fitting model used only when no skin is selected.
 pub fn mannequin() -> RgbaImage {
+    // An original fallback palette, used only until a real skin is available.
     RgbaImage::from_fn(64, 64, |x, y| {
         if y >= 32 {
-            Rgba([0, 0, 0, 0])
-        } else {
-            let shade = if (x / 4 + y / 4) % 2 == 0 { 165 } else { 140 };
-            Rgba([shade, shade, shade + 10, 255])
+            return Rgba([0, 0, 0, 0]);
         }
+        let color = if y < 16 {
+            if y < 8 || (x % 16 < 2 && y < 12) { [69, 45, 36, 255] } else { [190, 135, 100, 255] }
+        } else if y < 28 {
+            if x < 16 { [55, 54, 105, 255] } else if x < 40 { [79, 57, 145, 255] } else { [177, 123, 91, 255] }
+        } else {
+            [54, 52, 87, 255]
+        };
+        Rgba(color)
     })
 }
 

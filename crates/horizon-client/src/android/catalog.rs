@@ -60,6 +60,7 @@ impl RendererMode {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
+    pub english_interface: bool,
     pub reference_ui_v1: bool,
     pub profile: u32,
     pub proxy: Option<String>,
@@ -121,6 +122,7 @@ fn default_true() -> bool {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            english_interface: true,
             reference_ui_v1: false,
             profile: 0,
             proxy: None,
@@ -1064,7 +1066,7 @@ impl Catalog {
         }
         // Include enabled built-in Horizon mods (ANDROID_BUNDLED) in Installed > Mods.
         for &(b_id, b_title, b_desc) in &horizon_client::mod_list::ANDROID_BUNDLED {
-            if on.enabled.contains(b_id) && !on.disabled.contains(b_id) {
+            if horizon_client::mod_list::bundled_visible(b_id, self.config.legacy18) && on.enabled.contains(b_id) && !on.disabled.contains(b_id) {
                 let b_file = format!("builtin:{b_id}");
                 if !self.local.iter().any(|item| item.file == b_file) {
                     self.local.push(LocalItem {
@@ -2020,6 +2022,7 @@ impl Catalog {
             let bundled_matches = horizon_client::mod_list::ANDROID_BUNDLED
                 .iter()
                 .filter(|(id, title, _)| {
+                    if !horizon_client::mod_list::bundled_visible(id, self.config.legacy18) { return false; }
                     let q = self.query.trim().to_lowercase();
                     q.is_empty() || id.contains(&q) || title.to_lowercase().contains(&q)
                 })

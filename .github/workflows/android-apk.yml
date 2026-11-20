@@ -1,9 +1,9 @@
 name: Android APK
-run-name: Pojav Rust APK · ${{ github.sha }}
+run-name: NIVORA LAUNCHER APK · ${{ github.sha }}
 
 on:
   push:
-    branches: [main]
+    branches: [main, codex/private-hud-peripherals]
     paths-ignore: ['docs/**', '**/*.md']
   workflow_dispatch:
     inputs:
@@ -11,6 +11,14 @@ on:
         description: Build ARM64, ARMv7, x86 and x86_64
         type: boolean
         default: true
+      universal:
+        description: Also assemble one APK with all four architectures (Android 9+)
+        type: boolean
+        default: false
+      universal_source_run_id:
+        description: Optional existing run with four successful architecture builds; only rerun universal packaging
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -21,13 +29,13 @@ concurrency:
 
 jobs:
   build:
-    if: github.ref == 'refs/heads/main'
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/codex/private-hud-peripherals' || github.event_name == 'workflow_dispatch') && (github.event_name != 'workflow_dispatch' || inputs.universal_source_run_id == '')
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
-        abi: ${{ fromJSON((github.event_name == 'push' || inputs.all_abis) && '["arm64-v8a","armeabi-v7a","x86","x86_64"]' || '["arm64-v8a"]') }}
+        abi: ${{ fromJSON((github.event_name == 'push' || inputs.all_abis || inputs.universal) && '["arm64-v8a","armeabi-v7a","x86","x86_64"]' || '["arm64-v8a"]') }}
     env:
       CARGO_BUILD_JOBS: '2'
       CARGO_INCREMENTAL: '0'
@@ -36,6 +44,7 @@ jobs:
       CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
       CARGO_TARGET_DIR: ${{ github.workspace }}/.local/ci-target
       HORIZON_TELEMETRY_URL: 'off'
+      HORIZON_VERIFY_OFFICIAL_SIGNER: '1'
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -90,6 +99,10 @@ jobs:
         run: |
           python3 tools/check_public_tree.py
           python3 -m unittest discover -s tests -p 'test_android_release_audit.py'
+          python3 -m unittest discover -s tests -p 'test_android_universal.py'
+          python3 -m unittest discover -s tests -p 'test_android_universal_ci_floor.py'
+          python3 -m unittest discover -s tests -p 'test_nivora_single_launcher.py'
+          python3 -m unittest discover -s tests -p 'test_android_legacy_connection_ui.py'
           cargo test -p horizon-protocol --lib --test legacy18 --locked
           cargo test -p horizon-world legacy_network_states --lib --locked
           cargo build -p horizon-protocol --example legacy_server_probe --locked
@@ -114,6 +127,8 @@ jobs:
           sudo apt-get install -y libasound2-dev libudev-dev
           CARGO_PROFILE_TEST_DEBUG=0 cargo test -p horizon-client-render --lib touch::custom::tests --locked
           CARGO_PROFILE_TEST_DEBUG=0 cargo test -p horizon-client-render --lib touch::property_input::tests --locked
+          CARGO_PROFILE_TEST_DEBUG=0 cargo test -p horizon-client-render --lib touch::pojav::tests --locked
+          CARGO_PROFILE_TEST_DEBUG=0 cargo test -p horizon-client --test hud_editor --test pojav_import --test legacy_rules --locked
           CARGO_PROFILE_TEST_DEBUG=0 cargo test -p horizon-client --example legacy_login_probe --locked
       - name: Restore this fork's signing identity
         env:
@@ -126,8 +141,7 @@ jobs:
           from pathlib import Path
           present = [bool(os.environ.get(k)) for k in ('KEYSTORE_BASE64', 'KEYSTORE_PASSWORD', 'KEY_ALIAS')]
           if not any(present):
-              print('No repository signing key: build uses an ephemeral development certificate.')
-              raise SystemExit(0)
+              raise SystemExit('Official NIVORA APK build requires the repository signing key')
           if not all(present):
               raise SystemExit('Repository Android signing secrets are incomplete')
           path = Path('.local/android/ci.keystore').resolve()
@@ -146,8 +160,20 @@ jobs:
         env:
           ABI: ${{ matrix.abi }}
         run: |
-          python3 tools/android_build.py --abi "$ABI" --public --profile release \
-            --app-id dev.taldoshawn.pojav --sdk "$ANDROID_HOME" \
+          # Same official Android package ID for candidate testing and the future public release.
+          app_id=dev.taldoshawn.pojav
+          universal_args=()
+          # Pushes on this branch automatically assemble one universal APK.
+          # workflow_dispatch inputs are absent on push events, so testing only
+          # inputs.universal previously gave 32-bit APKs minSdk 27 while 64-bit
+          # APKs used minSdk 28. That changes AndroidManifest.xml and classes.dex,
+          # which must be identical across all APKs assembled into one package.
+          if [[ "${{ inputs.universal }}" == 'true' ]] || \
+             [[ "${{ github.event_name }}" == 'push' && "${{ github.ref }}" == 'refs/heads/codex/private-hud-peripherals' ]]; then
+            universal_args+=(--universal-floor)
+          fi
+          python3 tools/android_build.py --abi "$ABI" --public --profile release "${universal_args[@]}" \
+            --app-id "$app_id" --sdk "$ANDROID_HOME" \
             --java-home "${JAVA_HOME_17_X64:-$JAVA_HOME}" --gradle "$(command -v gradle)" \
             --ndk-version 28.2.13676358 --build-tools-version 35.0.0 \
             --dev-build "${GITHUB_RUN_NUMBER}.${GITHUB_SHA:0:12}" \
@@ -161,14 +187,16 @@ jobs:
           from pathlib import Path
           out = Path('dist'); out.mkdir(exist_ok=True)
           abi, commit = os.environ['ABI'], os.environ['GITHUB_SHA']
-          name = f'Pojav-Rust-{os.environ["GITHUB_RUN_NUMBER"]}-{commit[:12]}-{abi}.apk'
+          name = f'Nivora-Launcher-{os.environ["GITHUB_RUN_NUMBER"]}-{commit[:12]}-{abi}.apk'
           apk = out / name
           shutil.copyfile(Path('.local/android/apk') / abi / 'horizon-android-public.apk', apk)
           digest = hashlib.sha256(apk.read_bytes()).hexdigest()
           (out / 'SHA256SUMS.txt').write_text(f'{digest}  {name}\n')
           for source in ('LICENSE', 'THIRD_PARTY_NOTICES.md'):
               shutil.copyfile(source, out / source)
-          metadata = {'commit': commit, 'abi': abi, 'package': 'dev.taldoshawn.pojav',
+          metadata = {'commit': commit, 'abi': abi,
+                      'package': 'dev.taldoshawn.pojav',
+                      'private_test': False,
                       'signing': 'repository-key' if os.environ.get('HORIZON_ANDROID_KEYSTORE') else 'ephemeral-development',
                       'game_target': '26.3', 'legacy_1_8_gameplay': False,
                       'device_tested': False, 'sha256': digest,
@@ -196,3 +224,115 @@ jobs:
       - name: Remove signing files
         if: always()
         run: rm -f .local/android/ci.keystore .local/android/debug.keystore
+
+  universal:
+    if: >-
+      always() && (
+        (github.event_name == 'workflow_dispatch' && inputs.universal) ||
+        (github.event_name == 'push' && github.ref == 'refs/heads/codex/private-hud-peripherals')
+      ) && (needs.build.result == 'success' || (needs.build.result == 'skipped' && inputs.universal_source_run_id != ''))
+    needs: build
+    permissions:
+      contents: read
+      actions: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Download the four APKs of this exact run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REUSED_RUN_ID: ${{ inputs.universal_source_run_id }}
+        run: |
+          source_run="${REUSED_RUN_ID:-$GITHUB_RUN_ID}"
+          [[ "$source_run" =~ ^[0-9]+$ ]]
+          if [[ -n "$REUSED_RUN_ID" ]]; then
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$source_run" > source-run.json
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$source_run/jobs?per_page=100" > source-jobs.json
+            python3 - <<'PYCODE'
+          import json, os
+          from pathlib import Path
+          run = json.loads(Path('source-run.json').read_text())
+          assert run['repository']['full_name'] == os.environ['GITHUB_REPOSITORY']
+          assert run['path'] == '.github/workflows/android-apk.yml'
+          assert run['status'] == 'completed'
+          jobs = json.loads(Path('source-jobs.json').read_text())['jobs']
+          expected = {f'build ({abi})' for abi in ('arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64')}
+          assert {j['name'] for j in jobs if j['conclusion'] == 'success'} >= expected
+          commit = run['head_sha']
+          assert len(commit) == 40 and all(c in '0123456789abcdef' for c in commit)
+          with open(os.environ['GITHUB_ENV'], 'a') as out:
+              out.write(f'APK_SOURCE_COMMIT={commit}\n')
+          PYCODE
+          fi
+          gh run download "$source_run" --repo "$GITHUB_REPOSITORY" --pattern 'pojav-rust-*' --dir artifacts
+      - name: Install pinned Android signing and alignment tools
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "build-tools;35.0.0"'
+      - name: Assemble, align, sign and audit universal APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          python3 - <<'PYCODE'
+          import base64, hashlib, json, os, subprocess, sys
+          from pathlib import Path
+          sys.path.insert(0, 'tools')
+          from android_universal import assemble
+          from check_android_release import audit
+          sources = sorted(Path('artifacts').rglob('*.apk'))
+          for source in sources:
+              m = json.loads((source.parent / 'BUILD.json').read_text())
+              assert m['commit'] == os.environ.get('APK_SOURCE_COMMIT', os.environ['GITHUB_SHA'])
+              assert hashlib.sha256(source.read_bytes()).hexdigest() == m['sha256']
+          Path('dist').mkdir()
+          assemble(sources, Path('universal-unsigned.apk'))
+          tools = Path(os.environ['ANDROID_HOME']) / 'build-tools/35.0.0'
+          subprocess.run([str(tools/'zipalign'), '-P', '16', '-f', '4', 'universal-unsigned.apk', 'universal-aligned.apk'], check=True)
+          key = Path('universal.keystore')
+          configured = bool(os.environ.get('KEYSTORE_BASE64'))
+          if not configured:
+              raise SystemExit('Universal NIVORA APK requires the official signing key')
+          assert os.environ.get('KEYSTORE_PASSWORD') and os.environ.get('KEY_ALIAS')
+          key.write_bytes(base64.b64decode(os.environ['KEYSTORE_BASE64'], validate=True))
+          key.chmod(0o600)
+          apk = Path('dist') / f'Nivora-Launcher-{os.environ["GITHUB_RUN_NUMBER"]}-universal.apk'
+          try:
+              subprocess.run([str(tools/'apksigner'), 'sign', '--ks', str(key), '--ks-key-alias', os.environ['KEY_ALIAS'], '--ks-pass', 'env:KEYSTORE_PASSWORD', '--out', str(apk), 'universal-aligned.apk'], check=True)
+          finally:
+              key.unlink(missing_ok=True)
+          verification = subprocess.check_output([str(tools/'apksigner'), 'verify', '--verbose', '--print-certs', str(apk)], text=True)
+          expected_certificate = '97eff0acd8a9dccf3e1719d239cebdb0916a167838e47ea3b7e2305ca2c60ee7'
+          actual_certificate = next(
+              (line.split(':', 1)[1].strip().lower() for line in verification.splitlines()
+               if 'Signer #1 certificate SHA-256 digest:' in line),
+              None,
+          )
+          if actual_certificate != expected_certificate:
+              raise SystemExit('The candidate APK is not signed by the permanent NIVORA certificate')
+          subprocess.run([str(tools/'zipalign'), '-c', '-P', '16', '4', str(apk)], check=True)
+          (apk.parent/'signature.txt').write_text(verification)
+          report = audit(apk, tools/'aapt2', public=True, app_id='dev.taldoshawn.pojav')
+          assert report['passed'], report
+          (apk.parent/'audit.json').write_text(json.dumps(report, indent=2))
+          digest = hashlib.sha256(apk.read_bytes()).hexdigest()
+          (apk.parent/'SHA256SUMS.txt').write_text(f'{digest}  {apk.name}\n')
+          (apk.parent/'BUILD.json').write_text(json.dumps({'commit':os.environ.get('APK_SOURCE_COMMIT', os.environ['GITHUB_SHA']), 'assembly_commit':os.environ['GITHUB_SHA'], 'abi':'universal', 'min_sdk':28, 'bytes':apk.stat().st_size, 'sha256':digest, 'signing':'repository-key', 'requires_official_resigning':False, 'device_tested':False}, indent=2))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
+              f.write(f'Universal APK: {apk.stat().st_size / 1024**2:.1f} MiB. Android 9+. Contains ARM64, ARMv7, x86 and x86_64. '+('Official NIVORA signing key verified.'))
+          PYCODE
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: nivora-${{ github.run_number }}-universal
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+
+  # Intentionally no publish job. APKs from this workflow are private GitHub
+  # Actions artifacts for review, even though they use the official package ID
+  # and release signing certificate. After explicit owner approval, run the
+  # separate "Publish verified owner-signed APKs" workflow manually with the
+  # exact successful run number, run ID and source SHA. Only that workflow
+  # may create the public GitHub Release consumed by the NIVORA website.

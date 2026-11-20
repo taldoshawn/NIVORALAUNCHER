@@ -149,9 +149,11 @@ impl Game<'_> {
         self.draw_dialog(&mut batch);
         self.draw_pack_prompt(&mut batch);
         self.draw_link_prompt(&mut batch);
-        self.smartf3_draw(&mut batch, size);
-        self.frame_graph
-            .draw(self.settings.horizon.overlay, &mut batch, &self.gui.atlas);
+        horizon_client::hud::inset_overlay(&mut batch, self.hud_safe_margins(), |b| {
+            let safe_size = [(b.width * b.scale).round() as u32, (b.height * b.scale).round() as u32];
+            self.smartf3_draw(b, safe_size);
+            self.frame_graph.draw(self.settings.horizon.overlay, b, &self.gui.atlas);
+        });
         self.draw_pad_cursor(&mut batch);
         Some(batch)
     }

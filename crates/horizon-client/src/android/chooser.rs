@@ -34,8 +34,8 @@ impl Launcher {
         let device = if matches!(kind, Kind::Renderer) {
             self.renderer.as_ref().map(|r| {
                 format!(
-                    "GPU: {} / {} {}",
-                    r.info.name, r.info.driver, r.info.driver_info
+                    "GPU: {} · {}",
+                    r.info.name, r.info.driver
                 )
             })
         } else {
@@ -52,8 +52,8 @@ impl Launcher {
                 ],
             ),
             Kind::Aspect => (
-                "Aspect ratio",
-                "Fits the entire picture without stretching. Touch coordinates follow the picture. Portrait swaps width and height.",
+                "Proporção da tela",
+                "Ajusta a imagem sem distorção e mantém os controles alinhados.",
                 [
                     crate::display::Aspect::Native,
                     crate::display::Aspect::Wide,
@@ -109,7 +109,7 @@ impl Launcher {
                     .collect(),
             ),
             Kind::DisplayHz => (
-                "Display refresh rate",
+                "Taxa de atualização",
                 "An Android display preference, not a game FPS cap. Unsupported rates may be ignored.",
                 crate::device_preferences::DISPLAY_RATES
                     .into_iter()
@@ -171,7 +171,7 @@ impl Launcher {
                     .collect(),
             ),
             Kind::Orientation => (
-                "Screen orientation",
+                "Orientação da tela",
                 "Applies to the launcher and game. Does not change touch bindings.",
                 crate::catalog::Orientation::ALL
                     .into_iter()
@@ -186,24 +186,24 @@ impl Launcher {
                     .collect(),
             ),
             Kind::Renderer => (
-                "Rendering mode",
-                "Uses the system GPU driver. Applies on the next game launch.",
+                "Renderizador",
+                "Usa o driver do Android. A alteração vale na próxima inicialização do jogo.",
                 vec![
                     (
-                        "OpenGL ES / experimental".into(),
-                        "For older GPUs. Requires ES 3.0+ and sufficient driver limits.".into(),
+                        "OpenGL ES · experimental".into(),
+                        "Para GPUs compatíveis com OpenGL ES 3.0 ou superior.".into(),
                         Action::ChooseRenderer(RendererMode::OpenGl),
                         c.renderer == RendererMode::OpenGl,
                     ),
                     (
-                        "Vulkan / GPU batching".into(),
-                        "Optimized Vulkan pipeline with per-page draw batching and high-throughput chunk streaming.".into(),
+                        "Vulkan · desempenho".into(),
+                        "Agrupa desenhos na GPU para reduzir o trabalho de renderização.".into(),
                         Action::ChooseRenderer(RendererMode::Vulkan),
                         c.renderer == RendererMode::Vulkan,
                     ),
                     (
-                        "Vulkan / compatibility".into(),
-                        "Standard Vulkan rendering path with direct per-section draws."
+                        "Vulkan · compatibilidade".into(),
+                        "Renderização padrão com chamadas diretas por seção."
                             .into(),
                         Action::ChooseRenderer(RendererMode::VulkanCompatibility),
                         c.renderer == RendererMode::VulkanCompatibility,
@@ -301,7 +301,7 @@ impl Launcher {
                         let active = touch.preset_id.eq_ignore_ascii_case(&meta.id);
                         let mut title = meta.name.clone();
                         if meta.is_default {
-                            title.push_str("  [Protected Default]");
+                            title.push_str("  [Padrão protegido]");
                         }
                         let sub = format!(
                             "{}  •  controls/{}/{}.json",
@@ -314,9 +314,9 @@ impl Launcher {
                     .collect();
                 (
                     match style {
-                        horizon_client::touch::ControlStyle::Mcpe => "MCPE Control Presets",
+                        horizon_client::touch::ControlStyle::Mcpe => "Layouts de controles MCPE",
                         horizon_client::touch::ControlStyle::GoyControl => {
-                            "GoyControl Control Presets"
+                            "Layouts de controles personalizados"
                         }
                     },
                     match style {
@@ -343,17 +343,17 @@ impl Launcher {
 impl Chooser {
     pub(super) fn confirm_delete(name: String) -> Self {
         Self {
-            title: "Remove add-on?",
-            help: "Deletes only the selected file from this profile. This cannot be undone.",
+            title: "Remover conteúdo?",
+            help: "Remove apenas o arquivo selecionado deste perfil. Não pode ser desfeito.",
             device: Some(name),
             choices: vec![
                 (
-                    "Remove".into(),
+                    "Remover".into(),
                     String::new(),
                     Action::ConfirmDeleteLocal,
                     false,
                 ),
-                ("Cancel".into(), String::new(), Action::Dismiss, true),
+                ("Voltar".into(), String::new(), Action::Dismiss, true),
             ],
             scroll: 0.0,
         }
@@ -366,7 +366,7 @@ impl Chooser {
                 (
                     [
                         32.0,
-                        137.0 + i as f32 * 84.0 - self.scroll,
+                        132.0 + i as f32 * 84.0 - self.scroll,
                         width - 64.0,
                         76.0,
                     ],
@@ -388,7 +388,8 @@ impl Chooser {
         let spring_t = horizon_client::ui_theme::motion::spring_expressive_default(modal_anim.clamp(0.0, 1.0));
         let slide = (1.0 - spring_t) * 16.0;
         targets.clear();
-        ui.draw_theme_background(0.0, 0.0, w, h, &theme);
+        ui.rounded(0.0, 0.0, w, h, 0.0, horizon_client::ui_theme::color::hex(0x0B0B12,255));
+        ui.rounded(20.0, 20.0, 4.0, 32.0, 2.0, theme.accent);
         ui.text(
             Face::SemiBold,
             24.0,
@@ -397,14 +398,7 @@ impl Chooser {
             theme.text_primary,
             self.title,
         );
-        ui.text(
-            Face::Regular,
-            14.0,
-            32.0,
-            74.0 + slide,
-            theme.text_muted,
-            self.help,
-        );
+        ui.text_clipped(Face::Regular, 13.0, 32.0, 74.0 + slide, (w-64.0).max(1.0), theme.text_muted, self.help);
         if let Some(device) = &self.device {
             ui.hint_line(32.0, 100.0 + slide, w - 64.0, device, theme.accent);
         }
@@ -461,19 +455,21 @@ impl Chooser {
             if *selected {
                 ui.rounded(53.0, y + 31.0, 12.0, 12.0, 6.0, theme.accent);
             }
-            ui.text(
+            ui.text_clipped(
                 Face::SemiBold,
                 17.0,
                 84.0,
                 y + 11.0,
+                (w-130.0).max(1.0),
                 theme.text_primary,
                 label,
             );
-            ui.text(
+            ui.text_clipped(
                 Face::Regular,
                 13.0,
                 84.0,
                 y + 40.0,
+                (w-130.0).max(1.0),
                 theme.text_muted,
                 detail,
             );
@@ -486,7 +482,7 @@ impl Chooser {
             ui,
             targets,
             [32.0, h - 74.0, 160.0, 44.0],
-            "Cancel",
+            "Voltar",
             Action::Dismiss,
             false,
         );

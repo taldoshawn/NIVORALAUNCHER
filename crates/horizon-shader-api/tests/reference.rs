@@ -62,7 +62,7 @@ fn every_stage_compiles_with_vanilla_s_function() {
 
 #[test]
 fn the_frame_s_wgsl_layout_is_the_uploaded_struct_s() {
-    let text = format!("{}{}", StageKind::Sky.prelude(Api::V0_1), vanilla(StageKind::Sky));
+    let text = format!("{}{}", StageKind::Sky.prelude(Api::V0_2), vanilla(StageKind::Sky));
     let module = validate(&text);
     let (_, ty) = module
         .types

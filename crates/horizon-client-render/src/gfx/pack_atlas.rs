@@ -247,6 +247,8 @@ impl PackAtlas {
         };
         let attributes = [
             ("mc_Entity", entity),
+            // section_instance stores 1 - visibility in the UV step mantissa.
+            ("mc_chunkFade", "(hz_origin.w > 0.0 ? 1.0 - float(floatBitsToUint(hz_origin.w) & 0x7fffffu) / 8388608.0 : 1.0)"),
             ("at_midBlock", mid_block),
             (
                 "mc_midTexCoord",

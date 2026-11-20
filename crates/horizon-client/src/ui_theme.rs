@@ -1179,6 +1179,8 @@ impl<'a> Ui<'a> {
     }
 
     pub fn fit_text(&self, face: Face, size: f32, text: &str, width: f32) -> String {
+        #[cfg(target_os = "android")]
+        let text = launcher_text(text);
         if text.is_empty() || width <= 0.0 {
             return String::new();
         }
@@ -2364,6 +2366,8 @@ impl<'a> Ui<'a> {
     // ---- text ----
     /// The advance of `text` in dp.
     pub fn measure(&self, face: Face, size: f32, text: &str) -> f32 {
+        #[cfg(target_os = "android")]
+        let text = launcher_text(text);
         let px = (size * self.density * 4.0).round() / 4.0;
         with_cache(self.atlas, |c| {
             let font = c.fonts.face(face);
@@ -2459,6 +2463,8 @@ impl<'a> Ui<'a> {
     }
     /// Text in a `1.45 × size` line box whose top is `y`.
     pub fn text(&mut self, face: Face, size: f32, x: f32, y: f32, color: u32, text: &str) -> f32 {
+        #[cfg(target_os = "android")]
+        let text = launcher_text(text);
         self.text_line(face, size, (size * 1.45).round(), x, y, color, text)
     }
     pub fn text_centered(
@@ -4601,5 +4607,90 @@ mod tests {
         let grad = cfg.resolve();
         assert!(grad.is_gradient);
         assert_ne!(grad.bg_solid >> 24, 0, "solid fallback is always opaque");
+    }
+}
+
+
+#[cfg(target_os = "android")]
+thread_local! {
+    static ENGLISH_LAUNCHER: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(target_os = "android")]
+pub fn with_launcher_language<T>(english: bool, draw: impl FnOnce() -> T) -> T {
+    ENGLISH_LAUNCHER.with(|language| {
+        let previous = language.replace(english);
+        let result = draw();
+        language.set(previous);
+        result
+    })
+}
+
+#[cfg(target_os = "android")]
+fn launcher_text(text: &str) -> &str {
+    if !ENGLISH_LAUNCHER.get() {
+        return text;
+    }
+    match text {
+        "Jogar" => "Play",
+        "Instalar" => "Install",
+        "Instalados" => "Installed",
+        "Configurações" => "Settings",
+        "Minecraft no Android" => "Minecraft on Android",
+        "Recursos" | "Pacotes de recursos" => "Resource Packs",
+        "Editar HUD" => "Edit HUD",
+        "Editor de HUD" => "HUD Editor",
+        "Controles" => "Controls",
+        "Controles Pojav" => "Pojav Controls",
+        "Voltar" => "Back",
+        "Cancelar" => "Cancel",
+        "Concluir" => "Done",
+        "Salvar" => "Save",
+        "Carregar" => "Load",
+        "Importar" => "Import",
+        "Exportar" => "Export",
+        "Importar Pojav" => "Import Pojav",
+        "Exportar Pojav" => "Export Pojav",
+        "Nome" => "Name",
+        "Largura" => "Width",
+        "Altura" => "Height",
+        "Clonar" => "Clone",
+        "Excluir" => "Delete",
+        "Alternável" => "Toggle",
+        "Deslizável" => "Swipeable",
+        "Cor de fundo" => "Background color",
+        "Opacidade" => "Opacity",
+        "No jogo" => "In game",
+        "Nos menus" => "In menus",
+        "Diagnóstico" => "Diagnostics",
+        "Exportar relatório" => "Export report",
+        "Ver atualizações" => "Check for updates",
+        "Aviso" | "Comunicado" => "Notice",
+        "Conta" => "Account",
+        "Vídeo" => "Video",
+        "Selecionar versão" => "Select version",
+        "Modo de renderização" => "Rendering mode",
+        "Vulkan / desempenho" => "Vulkan / performance",
+        "Vulkan / compatibilidade" => "Vulkan / compatibility",
+        "OpenGL ES / experimental" => "OpenGL ES / experimental",
+        "Orientação da tela" => "Screen orientation",
+        "Proporção da tela" => "Aspect ratio",
+        "Taxa de atualização" => "Refresh rate",
+        "Endereço do servidor" => "Server address",
+        "Ajuste desempenho, controles e aparência do launcher." => "Adjust performance, controls, and launcher appearance.",
+        "Renderização, resolução e FPS" => "Rendering, resolution, and FPS",
+        "Tema, perfis e comportamento" => "Theme, profiles, and behavior",
+        "HUD, botões e sensibilidade" => "HUD, buttons, and sensitivity",
+        "Recursos em teste (instáveis)" => "Experimental features",
+        "Logs, informações e erros" => "Logs, information, and errors",
+        "Editar botões, importar Pojav e organizar seus controles" => "Edit buttons, import Pojav layouts, and arrange controls",
+        "1.8.9: servidores multiplayer. Mundos locais usam 26.3. Outras versões ainda não estão implementadas." => "1.8.9: multiplayer servers. Local worlds use 26.3. Other versions are unavailable.",
+        "Usa o driver do Android. A alteração vale na próxima inicialização do jogo." => "Uses the Android GPU driver. Applies the next time the game starts.",
+        "Agrupa desenhos na GPU para reduzir o trabalho de renderização." => "Batches draws on the GPU to reduce rendering overhead.",
+        "Renderização padrão com chamadas diretas por seção." => "Standard rendering with direct draws per section.",
+        "Para GPUs compatíveis com OpenGL ES 3.0 ou superior." => "For GPUs that support OpenGL ES 3.0 or newer.",
+        "Mundos locais e multiplayer 26.3" => "Local worlds and 26.3 multiplayer",
+        "TESTE PRIVADO" => "PRIVATE TEST",
+        _ => text,
     }
 }

@@ -567,7 +567,7 @@ mod tests {
         let builtin = |n: &str| match n {
             "cameraPosition" => Some(Val::vector(&[1.0, 64.0, 2.0])),
             "sunAngle" => Some(Val::scalar(0.125)),
-            "biome" => Some(Val::scalar(1.0)),
+            "biome" => Some(Val::scalar(5.0)), // desert in the shader pack biome table
             "gbufferModelView" => {
                 let mut m = Val::scalar(0.0);
                 m.v[1] = 9.0; // column 0, row 1

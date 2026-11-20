@@ -10312,6 +10312,7 @@ impl Game<'_> {
     pub(super) fn native_setting(&self, mod_id: &str, key: &str) -> Option<String> {
         let path = self.native_data_dir(mod_id).join(key);
         fs::read_to_string(path).ok().map(|v| v.trim().to_owned())
+            .or_else(|| horizon_client::mod_list::remote::default_setting(mod_id, key))
     }
     /// Keeps a mod's setting `key`.
     pub(super) fn native_set_setting(&self, mod_id: &str, key: &str, value: &str) {

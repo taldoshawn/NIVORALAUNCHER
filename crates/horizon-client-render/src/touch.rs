@@ -32,6 +32,7 @@ pub mod custom;
 pub mod editor;
 pub mod drawer;
 pub mod property_input;
+pub mod pojav;
 pub use custom::CustomButton;
 pub use editor::{Editor, EditorDragKind, PickerStep};
 pub mod layout;
@@ -186,6 +187,7 @@ enum Role {
 
 pub struct TouchControls {
     pub settings: Settings,
+    pub controls_hidden: bool,
     pub hud_opacity_scale: f32,
     pub force_crosshair: bool,
     pub projectile_crosshair: bool,
@@ -241,6 +243,7 @@ impl Default for TouchControls {
     fn default() -> Self {
         Self {
             settings: Settings::default(),
+            controls_hidden: false,
             hud_opacity_scale: 1.0,
             force_crosshair: false,
             projectile_crosshair: false,
@@ -457,6 +460,7 @@ impl TouchControls {
     }
 
     pub fn visible_for_state(&self, c: Control, in_menu: bool) -> bool {
+        if self.controls_hidden && self.editor.is_none() { return false; }
         if !self.visible(c) {
             return false;
         }
@@ -518,6 +522,14 @@ impl TouchControls {
         }
     }
     pub fn placement(&self, c: Control) -> layout::Placement {
+        if c == Control::Move {
+            if let Some(g)=&self.settings.pojav_joystick {
+                let raw=self.settings.layouts[self.settings.mode.index()][c as usize];
+                if let Some(mut p)=g.placement(raw,self.aspect(),self.settings.button_scale) {
+                    if self.settings.left_handed {p.center[0]=1.-p.center[0];}return p;
+                }
+            }
+        }
         let mut p = self.settings.placement(c);
         let factory_swap = c == Control::Offhand
             && self.settings.layouts[self.settings.mode.index()][c as usize].center == [0.80, 0.96]
@@ -1810,6 +1822,9 @@ pub fn draw_goy_static_button(
     toggled: bool,
     opacity: f32,
 ) {
+    let mut style=*p;
+    if style.pojav_imported {style.roundness=w.min(h)*style.roundness/100.0;style.stroke_roundness=w.min(h)*style.stroke_roundness/100.0;}
+    let p=&style;
     let fill_c = if held {
         scale_alpha(p.on_click_color, opacity)
     } else if toggled {
@@ -1938,17 +1953,35 @@ pub fn draw_goy_static_button(
         }
     }
     if !label.is_empty() && a.sprites.contains_key("font/ascii") {
-        let width = HudBatch::text_width(a, label);
+        let mut lines = vec![String::new()];
+        for ch in label.chars() {
+            let line = lines.last_mut().unwrap();
+            if ch == '\n' {
+                lines.push(String::new());
+                continue;
+            }
+            let mut next = line.clone();
+            next.push(ch);
+            if !line.is_empty() && HudBatch::text_width(a, &next) > (w - 6.0).max(6.0) {
+                lines.push(ch.to_string());
+            } else {
+                *line = next;
+            }
+        }
+        let width = lines.iter().map(|s| HudBatch::text_width(a, s)).fold(0.0f32, f32::max);
+        let height = lines.len() as f32 * 9.0;
         let start = b.vertices.len();
+        for (row, line) in lines.iter().enumerate() {
         b.text(
             a,
-            label,
-            x + (w - width) / 2.0,
-            y + (h - 8.0) / 2.0,
+            line,
+            x + (w - HudBatch::text_width(a, line)) / 2.0,
+            y + (h - height) / 2.0 + row as f32 * 9.0,
             rgba(245, 243, 255, (opacity.clamp(0.2, 1.0) * 255.0) as u8),
             true,
         );
-        let scale = ((w - 6.0).max(1.0) / width.max(1.0)).min(((h - 6.0).max(1.0) / 8.0).min(1.0));
+        }
+        let scale = ((w - 6.0).max(1.0) / width.max(1.0)).min(((h - 6.0).max(1.0) / height).min(1.0));
         b.scale_since(start, x + w / 2.0, y + h / 2.0, scale, scale);
     }
 }

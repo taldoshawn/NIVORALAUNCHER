@@ -8,6 +8,17 @@ use horizon_client::{
 use winit::event::{Touch, TouchPhase};
 
 impl Game<'_> {
+    /// A disconnect dialog is a blocking menu, not a gameplay HUD.
+    /// Its buttons must remain accessible even with overlapping Pojav controls.
+    pub(super) fn android_multiplayer_disconnected(&self) -> bool {
+        matches!(
+            self.title.as_ref().map(|title| &title.mode),
+            Some(horizon_client::title::Mode::Multiplayer(
+                horizon_client::multiplayer::Screen::Disconnected { .. }
+            ))
+        )
+    }
+
     pub(crate) fn android_apply_display_scale(&mut self) {
         if let (Some(window), Some(renderer)) = (&self.window, &mut self.renderer)
             && let Err(error) = crate::display::apply(window, renderer)
@@ -252,6 +263,9 @@ impl Game<'_> {
                     self.keys.insert(key);
                 } else {
                     self.pad.custom_keys.remove(&key);
+                    if self.pad.hardware_keys.contains(&key) {
+                        return; // Releasing a HUD modifier must not release the physical key.
+                    }
                     self.physical_keys.remove(&key);
                     self.keys.remove(&key);
                 }
@@ -309,6 +323,14 @@ impl Game<'_> {
         if name == "mouse.look" {
             return;
         }
+        if name == "controls.toggle" {
+            if down { self.pad.touch.controls_hidden = !self.pad.touch.controls_hidden; }
+            return;
+        }
+        if name == "launcher.menu" {
+            if down { self.pad.touch.settings_requested = true; }
+            return;
+        }
         if name == "keyboard.show" {
             if down { self.android_show_keyboard(); }
             return;
@@ -339,10 +361,12 @@ impl Game<'_> {
             return;
         };
         if down {
-            self.pad.custom_keys.insert(key);
+            let already_held = !self.pad.custom_keys.insert(key) || self.pad.hardware_keys.contains(&key);
             self.physical_keys.insert(key);
+            if already_held { return; }
         } else {
             self.pad.custom_keys.remove(&key);
+            if self.pad.hardware_keys.contains(&key) { return; }
             self.physical_keys.remove(&key);
         }
         if down
@@ -695,6 +719,54 @@ impl Game<'_> {
         };
         let mut b = HudBatch::new([size.width, size.height]);
         let p = [t.location.x as f32 / b.scale, t.location.y as f32 / b.scale];
+
+        // Modal game buttons take priority over custom HUD overlays. On a
+        // connecting screen the old path sent the touch to a HUD control first,
+        // making Cancel unclickable whenever a custom button overlapped it.
+        if t.phase == TouchPhase::Started && self.remote_loading() {
+            if let Some((x, y)) = self.connect_cancel(self.gui_size())
+                && horizon_client::ui::hovered((p[0], p[1]), x, y, 200.0, 20.0)
+            {
+                self.pad.touch.ignore(t.id);
+                self.cursor = (p[0], p[1]);
+                self.connect_screen_click()?;
+                return Ok(true);
+            }
+        }
+
+        // The Disconnected screen's Back to Server List button is likewise
+        // usable with a single direct tap, regardless of virtual mouse mode.
+        if t.phase == TouchPhase::Started && self.android_multiplayer_disconnected() {
+            let (w, h) = self.gui_size();
+            let button_x = (w.ceil() / 2.0).floor() - 100.0;
+            let button_y = h.floor() - 52.0;
+            if horizon_client::ui::hovered(
+                (p[0], p[1]), button_x, button_y, 200.0, 20.0
+            ) {
+                self.pad.touch.ignore(t.id);
+                self.handle_window_event(
+                    events,
+                    id,
+                    WindowEvent::CursorMoved {
+                        device_id: t.device_id,
+                        position: t.location,
+                    },
+                );
+                for state in [ElementState::Pressed, ElementState::Released] {
+                    self.handle_window_event(
+                        events,
+                        id,
+                        WindowEvent::MouseInput {
+                            device_id: t.device_id,
+                            button: MouseButton::Left,
+                            state,
+                        },
+                    );
+                }
+                return Ok(true);
+            }
+        }
+
         if !self.pad.touch_ui.owns_relative(t.id)
             && !self.pad.touch_ui.owns_gesture(t.id)
             && let Some(menu_act) = self.pad.touch_ui.floating_menu_touch(
@@ -1220,21 +1292,23 @@ impl Game<'_> {
     }
 
     pub(super) fn android_poll_keyboard(&mut self) {
+        super::startup_menu::control_documents(&mut self.pad.touch);
         self.android_custom_events();
         self.android_sync_pointer();
-        if let Some(ed) = self.pad.touch.editor.as_mut()
-            && std::mem::take(&mut ed.keyboard_request)
-        {
-            let text = if ed.editing_button_label {
-                ed.button_label_input.clone()
-            } else if ed.editing_save_desc {
-                ed.save_desc_input.clone()
-            } else {
-                ed.save_name_input.clone()
-            };
+        if let Some(text) = horizon_client::touch_ui::take_control_editor_keyboard_text(&mut self.pad.touch) {
             crate::platform::show(&text);
         }
         if let Some(notice) = crate::documents::poll() {
+            if notice.changed && notice.kind.is_none() && notice.text.starts_with("Imported ") {
+                let home = crate::backend::game_home();
+                self.pad.touch.settings = horizon_client::touch::Settings::load_from(&home.join("horizon-touch.json"));
+                self.settings.touch = self.pad.touch.settings.clone();
+                if let Some(editor) = self.pad.touch.editor.as_mut() {
+                    editor.selected_custom = None;
+                    editor.selected = None;
+                    editor.status_msg = Some(notice.text.clone());
+                }
+            }
             if notice.changed {
                 self.refresh_pack_lists();
                 self.settings.shader_packs =
@@ -1248,6 +1322,14 @@ impl Game<'_> {
             ));
         }
         for out in crate::platform::poll() {
+            if horizon_client::touch_ui::apply_editor_button_label_output(&mut self.pad.touch, &out) {
+                self.settings.touch = self.pad.touch.settings.clone();
+                if horizon_client::touch_ui::output_dismisses(&out) {
+                    crate::platform::hide();
+                }
+                continue;
+            }
+
             if self.pad.touch.editor.is_some() {
                 let captured = match &out {
                     Output::Text(t) => self.pad.touch.capture_custom_text(t),
@@ -1280,13 +1362,6 @@ impl Game<'_> {
                     continue;
                 }
             }
-            if horizon_client::touch_ui::apply_editor_button_label_output(&mut self.pad.touch, &out) {
-                self.settings.touch = self.pad.touch.settings.clone();
-                if horizon_client::touch_ui::output_dismisses(&out) {
-                    crate::platform::hide();
-                }
-                continue;
-            }
             if self.android_preset_typing(&out) {
                 continue;
             }
@@ -1299,6 +1374,10 @@ impl Game<'_> {
             } else if next_sign_line {
                 self.android_show_keyboard();
             }
+        }
+        if horizon_client::touch_ui::finish_control_editor_keyboard(&mut self.pad.touch, std::path::Path::new(".")) {
+            self.settings.touch = self.pad.touch.settings.clone();
+            crate::platform::hide();
         }
         // Title screens also use Playing: their focused text fields must keep
         // the IME until the user confirms or closes the editor.
@@ -1347,7 +1426,7 @@ impl Game<'_> {
             "streaming":self.streaming.stages().into_iter().collect::<std::collections::BTreeMap<_,_>>()})
     }
     pub(super) fn android_key_up(&mut self, key: KeyCode) {
-        if self.pad.custom_keys.contains(&key) {
+        if self.pad.custom_keys.contains(&key) || self.pad.hardware_keys.contains(&key) {
             return;
         }
         self.physical_keys.remove(&key);

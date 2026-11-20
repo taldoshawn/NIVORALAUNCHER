@@ -89,3 +89,13 @@ class ReleaseAuditTests(unittest.TestCase):
     def test_nested_traversal_is_rejected(self):
         with self.assertRaises(ValueError):
             self.inspect({'../account.json': b'{}'})
+
+    def test_compressed_android_resource_table_is_not_installable(self):
+        with tempfile.TemporaryDirectory() as d:
+            path=Path(d)/'bad.apk'
+            with zipfile.ZipFile(path,'w') as z:
+                z.writestr('assets/engine-data.zip',archive({'facts.json':b'{}'}))
+                z.writestr('resources.arsc',b'resource table',compress_type=zipfile.ZIP_DEFLATED)
+            with patch.object(sys, 'path', [str(Path(__file__).resolve().parents[1] / 'tools'), *sys.path]):
+                findings=audit.inspect_payload(path,public=True)['findings']
+            self.assertIn('compressed_resource_table',{f['kind'] for f in findings})

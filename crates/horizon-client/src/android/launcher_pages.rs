@@ -265,6 +265,7 @@ impl AnimState {
 
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum Action {
+    ToggleLanguage,
     Page(Page),
     SettingsCat(SettingsCategory),
     Play,
@@ -1231,7 +1232,10 @@ impl Launcher {
             self.renderer = Some(r);
             return Ok(());
         };
-        let result = self.draw_pages_with(&mut r, &gui);
+        let result = horizon_client::ui_theme::with_launcher_language(
+            self.catalog.config.english_interface,
+            || self.draw_pages_with(&mut r, &gui),
+        );
         if result.is_ok() {
             crate::android::first_frame_shown();
         }
@@ -1383,16 +1387,14 @@ impl Launcher {
                     };
                 let paused = self.install_paused.load(Ordering::Relaxed);
                 self.install_transfer.observe(done_mib, paused);
-                let sub_left = format!(
-                    "Minecraft 26.3 • Profile {}",
-                    self.catalog.config.profile + 1
-                );
+                let selected = if self.catalog.config.legacy18 { "1.8.9" } else { "26.3" };
+                let sub_left = format!("Servidor {selected} • Perfil {}", self.catalog.config.profile + 1);
                 let sub_right = format!(
                     "{done_mib:.1} / {total_mib:.1} MiB ({:.0}%)",
                     overall * 100.0
                 );
                 let stage_text = match progress.stage {
-                    InstallStage::Download => "Downloading Java Edition 26.3 client.jar",
+                    InstallStage::Download => "Baixando recursos do motor (Java Edition 26.3)",
                     other => other.label(),
                 };
                 draw_my3_progress_view(
@@ -1550,7 +1552,7 @@ impl Launcher {
                 &mut ui,
                 &mut self.targets,
                 [content_x, sub_y, 114.0, 29.0],
-                "Open folder",
+                "Abrir pasta",
                 Action::OpenFolder(kind),
                 false,
             );
@@ -1558,7 +1560,7 @@ impl Launcher {
                 &mut ui,
                 &mut self.targets,
                 [content_x + 122.0, sub_y, 114.0, 29.0],
-                "Import file",
+                "Importar arquivo",
                 Action::Import(kind),
                 false,
             );
@@ -1585,6 +1587,7 @@ impl Launcher {
                 horizon_client::mod_list::ANDROID_BUNDLED
                     .into_iter()
                     .filter(|(id, title, _)| {
+                        if !horizon_client::mod_list::bundled_visible(id, self.catalog.config.legacy18) { return false; }
                         query.is_empty()
                             || id.contains(&query)
                             || title.to_lowercase().contains(&query)
@@ -1951,7 +1954,7 @@ impl Launcher {
             let show_corner_links = page == Page::Settings
                 && self.catalog.settings_category == SettingsCategory::Overview;
             let status = self.error.as_deref().unwrap_or(&self.catalog.status);
-            if !status.is_empty() && !page.is_catalog() {
+            if !status.is_empty() && !page.is_catalog() && !(page == Page::Settings && (status.contains("results") || status.contains("available"))) {
                 let max_snack_w = if show_corner_links {
                     (content_w - 224.0).max(120.0)
                 } else {
@@ -3720,9 +3723,9 @@ impl Launcher {
             title_x,
             head_y + 2.0,
             my3_text(),
-            "Horizon Android Update",
+            "Atualizações do Nivora",
         );
-        let badge_text = format!("v1.0.0  →  v{}", info.version);
+        let badge_text = format!("Release disponível: v{}", info.version);
         let badge_w = ui.measure(Face::SemiBold, 11.0, &badge_text) + 16.0;
         let badge_r = [title_x, head_y + 24.0, badge_w, 20.0];
         ui.rounded(
@@ -4658,8 +4661,8 @@ impl Launcher {
                         SettingControl::Button(&hz_str, Action::DisplayHz, false),
                     ),
                     (
-                        "Display aspect ratio",
-                        "Native fullscreen, 16:9 widescreen, 4:3 classic or square",
+                        "Proporção da tela",
+                        "Tela inteira nativa, widescreen 16:9, clássico 4:3 ou quadrado",
                         SettingControl::Button(&aspect_str, Action::Aspect, false),
                     ),
                     (
@@ -4714,16 +4717,16 @@ impl Launcher {
                     ),
                     (
                         "Graphics Quality Preset",
-                        "Cycle between Fast, Fancy and Fabulous rendering modes",
+                        "Escolha a qualidade gráfica do jogo",
                         SettingControl::Button(&preset_str, Action::CycleGraphicsPreset, false),
                     ),
                     (
-                        "Max Framerate Ceiling",
-                        "Cap gameplay FPS to save power or unlock for high-refresh displays",
+                        "Limite de FPS",
+                        "Limite os frames para economizar energia ou aproveitar uma tela rápida",
                         SettingControl::Button(&fps_str, Action::CycleMaxFps, false),
                     ),
                     (
-                        "Vertical Sync & Cloud Rendering",
+                        "Sincronização vertical e nuvens",
                         "Tap switch to toggle VSync, or cycle Clouds in in-game video options",
                         SettingControl::Toggle(opts.vsync, Action::ToggleVsync),
                     ),
@@ -4860,13 +4863,13 @@ impl Launcher {
                         SettingControl::Button(&worker_str, Action::WorkerLimit, false),
                     ),
                     (
-                        "Reusable RAM cache budget",
-                        "Pooled audio & mesh buffer cache ceiling",
+                        "Limite do cache de memória",
+                        "Memória reutilizável para sons e malhas",
                         SettingControl::Button(&cache_str, Action::CacheBudget, false),
                     ),
                     (
-                        "Quick-join server address",
-                        "Optional server IP:port to connect immediately on Play",
+                        "Endereço do servidor",
+                        "IP:porta opcional para conectar ao iniciar o jogo",
                         SettingControl::TextField {
                             label: "SERVER IP",
                             value: &c.server,
@@ -4877,8 +4880,8 @@ impl Launcher {
                     ),
                     (
                         "Open game & world folders",
-                        "Manage saves, resource packs and mods in Android Files",
-                        SettingControl::Button("Open Files", Action::GameFiles, false),
+                        "Gerencie mundos, pacotes e mods no aplicativo Arquivos do Android",
+                        SettingControl::Button("Abrir arquivos", Action::GameFiles, false),
                     ),
                 ];
 
@@ -5554,7 +5557,7 @@ impl Launcher {
                      fraction: (touch_cfg.virtual_mouse_sensitivity - 0.25) / 2.75,
                      minus_action: Action::VirtualMouseSpeedDelta(-0.10), plus_action: Action::VirtualMouseSpeedDelta(0.10) }),
                     ("Keyboard controls", "Create an editable WASD layout with keyboard and mouse buttons",
-                     SettingControl::Button("Create WASD layout", Action::KeyboardControlPreset, false)),
+                     SettingControl::Button("Criar layout WASD", Action::KeyboardControlPreset, false)),
                     ("FPS COUNTER", "Measured frames; does not change the frame limit",
                      SettingControl::SectionHeader("FPS", Icon::Settings)),
                     ("Show FPS", "Native Rust counter during gameplay",
@@ -5956,7 +5959,7 @@ impl Launcher {
                     let r_import = [r_editor[0] + btn_w_sm + btn_gap, btn_y_wb, btn_w_sm, 36.0];
                     let r_export = [r_import[0] + btn_w_sm + btn_gap, btn_y_wb, btn_w_sm, 36.0];
                     for (rect, lbl, act, primary) in [
-                        (r_editor, "Open Editor", Action::OpenControlEditor, true),
+                        (r_editor, "Abrir editor", Action::OpenControlEditor, true),
                         (r_import, "Import JSON", Action::ImportControlProfile, false),
                         (r_export, "Export Save", Action::ExportControlProfile, false),
                     ] {
@@ -6093,9 +6096,9 @@ impl Launcher {
 
                 let has_err = self.home.join("android-error.txt").is_file();
                 let health_badge = if has_err {
-                    "Crash Log Recorded"
+                    "Erro registrado"
                 } else {
-                    "Runtime Healthy"
+                    "Sem erro registrado"
                 };
 
                 let rows: [(&str, &str, SettingControl<'_>); 7] = [
@@ -6249,6 +6252,13 @@ impl Launcher {
             }
             Some(Action::ConfirmExit) => {
                 events.exit();
+            }
+            Some(Action::ToggleLanguage) => {
+                self.catalog.config.english_interface = !self.catalog.config.english_interface;
+                if let Err(error) = self.catalog.config.save(&self.home) {
+                    self.catalog.config.english_interface = !self.catalog.config.english_interface;
+                    self.catalog.status = error;
+                }
             }
             Some(Action::SettingsCat(cat)) => {
                 self.catalog.settings_category = cat;
@@ -6477,9 +6487,9 @@ impl Launcher {
                 self.catalog.config.save(&self.home)?;
                 self.catalog.config.apply_experimental_to_game(&self.home);
                 self.catalog.status = if self.catalog.config.max_fps_mode {
-                    "Max FPS Mode enabled: 260 FPS uncapped with VSync disabled and high-refresh requested."
+                    "Modo de alto FPS ativado: limite de 260 FPS, sem VSync."
                 } else {
-                    "Max FPS Mode disabled (balanced 120 FPS default restored)."
+                    "Modo equilibrado restaurado: limite de 120 FPS."
                 }
                 .into();
             }
@@ -7025,10 +7035,10 @@ impl Launcher {
                 self.login.ely = false;
             }
             Some(Action::SavedPage(next)) => {
-                if next && self.login.account_offset + 3 < self.login.saved_accounts.len() + self.login.saved_offline.len() {
-                    self.login.account_offset += 3;
+                if next && self.login.account_offset + 4 < self.login.saved_accounts.len() + self.login.saved_offline.len() {
+                    self.login.account_offset += 4;
                 } else if !next {
-                    self.login.account_offset = self.login.account_offset.saturating_sub(3);
+                    self.login.account_offset = self.login.account_offset.saturating_sub(4);
                 }
             }
             Some(Action::SelectAccount(index)) => {
@@ -7234,6 +7244,7 @@ impl Launcher {
                         horizon_client::mod_list::ANDROID_BUNDLED
                             .iter()
                             .filter(|(id, title, _)| {
+                        if !horizon_client::mod_list::bundled_visible(id, self.catalog.config.legacy18) { return false; }
                                 query.is_empty()
                                     || id.contains(&query)
                                     || title.to_lowercase().contains(&query)
@@ -7939,7 +7950,7 @@ impl Launcher {
                 }
             }
             Some(Action::CheckForUpdates) => {
-                self.catalog.status = "Checking for updates...".into();
+                self.catalog.status = "Verificando releases oficiais…".into();
                 crate::updater::check_in_background();
             }
             Some(Action::FmCloseModal) => {
@@ -8104,14 +8115,7 @@ impl Launcher {
                     t.phase == TouchPhase::Started,
                     ended,
                 );
-                if let Some(ed) = &mut tc.editor
-                    && std::mem::take(&mut ed.keyboard_request)
-                {
-                    let text = if ed.editing_save_desc {
-                        ed.save_desc_input.clone()
-                    } else {
-                        ed.save_name_input.clone()
-                    };
+                if let Some(text) = horizon_client::touch_ui::take_control_editor_keyboard_text(tc) {
                     crate::platform::show(&text);
                 }
                 if ended || closed {
@@ -8209,10 +8213,13 @@ impl Launcher {
             .control_editor
             .as_ref()
             .and_then(|tc| tc.editor.as_ref())
-            .is_some_and(|ed| ed.save_dialog_open);
+            .is_some_and(|ed| ed.save_dialog_open || ed.editing_button_label);
         if self.catalog.editing.is_none() && !editor_typing {
             return;
         }
+        // EditText owns physical keys too while its IME session is active.
+        // The complete buffer reaches the field once through platform::poll.
+        if editor_typing && crate::platform::active() { return; }
         let out = match key.physical_key {
             PhysicalKey::Code(KeyCode::Backspace) => Some(Output::Backspace),
             PhysicalKey::Code(KeyCode::Enter) => {

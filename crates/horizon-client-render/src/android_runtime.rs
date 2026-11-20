@@ -271,3 +271,8 @@ mod cache_budget_tests {
         }
     }
 }
+
+// JNI only queues a reset; the game owns and releases pressed state on its thread.
+static PERIPHERAL_RESET: AtomicBool = AtomicBool::new(false);
+pub fn peripheral_removed() { PERIPHERAL_RESET.store(true, Ordering::Release); }
+pub fn take_peripheral_reset() -> bool { PERIPHERAL_RESET.swap(false, Ordering::AcqRel) }

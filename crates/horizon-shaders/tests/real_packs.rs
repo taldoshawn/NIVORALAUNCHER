@@ -166,7 +166,10 @@ fn real_packs_read() {
             let terrain = horizon_shaders::GbuffersInputs {
                 declarations: "layout(location = 0) in vec3 hz_v_pos;".into(),
                 body: "    hz_Vertex = vec4(hz_v_pos, 1.0);\n    hz_Color = vec4(1.0);\n".into(),
-                attributes: vec![("mc_Entity".into(), "vec4(-1.0)".into())],
+                attributes: vec![
+                    ("mc_Entity".into(), "vec4(-1.0)".into()),
+                    ("mc_chunkFade".into(), "1.0".into()),
+                ],
                 ..Default::default()
             };
             let inputs = horizon_shaders::GameInputs {

@@ -223,10 +223,14 @@ pub fn touch_scale(
     unicode: bool,
     gui_size: [i32; 2],
 ) -> (f32, [i32; 2]) {
-    if option <= 0 {
+    if option < 0 {
         return scale(framebuffer, gui_scale, option, unicode, gui_size);
     }
-    let pixels = option.clamp(1, 6);
+    let pixels = if option == 0 {
+        crate::window::calculate_scale(framebuffer, 0, unicode).max(2)
+    } else {
+        option.clamp(1, 6)
+    };
     (
         pixels as f32 / gui_scale.max(1) as f32,
         [framebuffer[0] / pixels, framebuffer[1] / pixels],

@@ -19,10 +19,18 @@ pub struct CustomButton {
     pub drawer_id: Option<u64>,
     #[serde(default)]
     pub parent_drawer: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pojav_geometry: Option<super::pojav::Geometry>,
     pub layouts: [Placement; 3],
 }
 impl CustomButton {
     pub fn new(key: String, index: usize) -> Self {
+        let mut placement = Placement::new(
+            0.68 + (index % 3) as f32 * 0.1,
+            0.35 + (index / 3 % 3) as f32 * 0.12,
+            0.105,
+        );
+        placement.button_color = 0;
         Self {
             key,
             second_key: String::new(),
@@ -32,11 +40,8 @@ impl CustomButton {
             always_visible: false,
             drawer_id: None,
             parent_drawer: None,
-            layouts: [Placement::new(
-                0.68 + (index % 3) as f32 * 0.1,
-                0.35 + (index / 3 % 3) as f32 * 0.12,
-                0.105,
-            ); 3],
+            pojav_geometry: None,
+            layouts: [placement; 3],
         }
     }
     pub fn valid_token(token: &str) -> bool {
@@ -45,7 +50,7 @@ impl CustomButton {
             || crate::keybinds::mouse_button(token).is_some()
             || matches!(
                 token,
-                "mouse.scroll.up" | "mouse.scroll.down" | "mouse.virtual.toggle" | "mouse.look" | "keyboard.show"
+                "mouse.scroll.up" | "mouse.scroll.down" | "mouse.virtual.toggle" | "mouse.look" | "keyboard.show" | "launcher.menu" | "controls.toggle"
             )
             || token
                 .strip_prefix("action:")
@@ -339,6 +344,12 @@ impl TouchControls {
             return Placement::new(0.5, 0.5, 0.105);
         };
         let mut p = btn.layouts[self.settings.mode.index()];
+        if let Some(g) = &btn.pojav_geometry {
+            if let Some(mut dynamic) = g.placement(p, self.aspect(), self.settings.button_scale) {
+                if self.settings.left_handed { dynamic.center[0] = 1. - dynamic.center[0]; }
+                return dynamic;
+            }
+        }
         if self.settings.left_handed {
             p.center[0] = 1.0 - p.center[0];
         }
@@ -348,6 +359,7 @@ impl TouchControls {
         if index >= self.settings.custom_buttons.len() {
             return false;
         }
+        if self.controls_hidden && !self.settings.custom_buttons[index].active_tokens().iter().any(|t| t == "controls.toggle") && self.editor.is_none() { return false; }
         let p = self.custom_placement(index);
         let is_goy =
             self.settings.control_style == layout::ControlStyle::GoyControl || p.use_goy_style;
@@ -830,6 +842,21 @@ mod tests {
         assert!(up.contains(&("key.keyboard.x".into(), false)));
         assert!(up.contains(&("key.mouse.left".into(), false)));
         assert_eq!(t.settings.custom_buttons[0].layouts[0].size, stored);
+    }
+
+    #[test]
+    fn default_movement_slides_between_directions_without_lifting() {
+        let mut t = TouchControls::default();
+        t.viewport(1920, 1080);
+        t.settings = layout::Settings::default_pojav();
+        t.update(1, [0.10, 0.69], true, false);
+        assert_eq!(t.key_events(), [("key.keyboard.w".into(), true)]);
+        t.update(1, [0.04, 0.81], false, false);
+        let events = t.key_events();
+        assert!(events.contains(&("key.keyboard.w".into(), false)));
+        assert!(events.contains(&("key.keyboard.a".into(), true)));
+        t.update(1, [0.04, 0.81], false, true);
+        assert_eq!(t.key_events(), [("key.keyboard.a".into(), false)]);
     }
 
     #[test]

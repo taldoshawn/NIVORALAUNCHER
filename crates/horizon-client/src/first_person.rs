@@ -11,6 +11,7 @@
 /// The ranged item state read by the first-person hand renderer.
 #[derive(Clone, Copy, Debug)]
 pub enum ItemPose {
+    LegacyBlock,
     Swing,
     /// A STAB swing (`SwingAnimationType` 2): a spear's jab.
     Stab,
@@ -61,6 +62,17 @@ pub fn item_pose(left: bool, inverse_height: f32, attack: f32, pose: ItemPose) -
         -0.52 - inverse_height * 0.6,
         -0.72,
     ));
+    if matches!(pose, ItemPose::LegacyBlock) {
+        let root = attack.sqrt();
+        return m
+            * Mat4::from_rotation_y((invert * (45.0 - (attack * attack * pi).msin() * 20.0)).to_radians())
+            * Mat4::from_rotation_z((invert * (root * pi).msin() * -20.0).to_radians())
+            * Mat4::from_rotation_x(((root * pi).msin() * -80.0).to_radians())
+            * Mat4::from_translation(Vec3::new(invert * -0.5, 0.2, 0.0))
+            * Mat4::from_rotation_y((invert * -30.0f32).to_radians())
+            * Mat4::from_rotation_x(-80.0f32.to_radians())
+            * Mat4::from_rotation_y((invert * 60.0f32).to_radians());
+    }
     if let ItemPose::Eat {
         remaining,
         duration,

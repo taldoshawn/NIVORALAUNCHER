@@ -664,7 +664,7 @@ impl Game<'_> {
             renderer.set_shader_pack(dimension, None, &[]);
         }
         self.system_message(Text::colored(
-            format!("Shader pack {name} could not be loaded and was turned off"),
+            format!("Shader pack {name} failed to load in this dimension. Check latest.log for details; selection was kept."),
             0xFF5555,
         ));
     }

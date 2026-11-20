@@ -3895,27 +3895,21 @@ impl PackPost {
         terrain: &mut TerrainDraw<'_>,
         frame: &super::Frame,
     ) {
-        // Opt-in on PC (`horizon-graphics.txt` shadowCache), automatic on Android for mobile GPU frame pacing.
-        if !frame.shadow_cache && !cfg!(target_os = "android") {
+        if !frame.shadow_cache {
             self.shadow_cache = ShadowCache::default();
             self.draw_shadow_pass(device, queue, encoder, terrain);
             return;
         }
 
-        // Entity vertices are interpolated each frame; on Android, `mark_player` always
-        // adds the player shadow draw even in first person, so we throttle entity shadow
-        // refreshes via `cache_key.ticks` (every 2 ticks) instead of disabling the cache.
+        // Interpolated entity geometry can change between two ticks.
         let has_shadow_entities = self
             .entities
             .as_ref()
             .is_some_and(|entities| entities.geometry.draws.iter().any(|draw| draw.shadow));
-        let mut cache_key = self.compute_shadow_cache_key(frame);
-        if cfg!(target_os = "android") && has_shadow_entities {
-            cache_key.ticks = frame.ticks / 2;
-        }
+        let cache_key = self.compute_shadow_cache_key(frame);
         // Custom images are cleared each frame (`pack_images::clear`) before the
         // shadow pass writes them, so a pack with any redraws it too.
-        let cache_hit = (!has_shadow_entities || cfg!(target_os = "android"))
+        let cache_hit = !has_shadow_entities
             && self.images.is_empty()
             && self.shadow_cache.key == Some(cache_key)
             && self.shadow_targets.is_some();
@@ -4057,27 +4051,15 @@ impl PackPost {
             color.mipmap.hash(&mut hasher);
         }
         let shadow_settings_hash = hasher.finish();
-        let shadow_uniforms_hash = if cfg!(target_os = "android") {
-            0
-        } else {
-            self.shadow_uniforms_hash()
-        };
-        let quantize = |a: f32| {
-            if cfg!(target_os = "android") {
-                (a * 4.0).round() / 4.0
-            } else {
-                a
-            }
-        };
-
+        let shadow_uniforms_hash = self.shadow_uniforms_hash();
         ShadowCacheKey {
-            sun_angle: quantize(frame.sky.sun_angle),
-            moon_angle: quantize(frame.sky.moon_angle),
+            sun_angle: frame.sky.sun_angle,
+            moon_angle: frame.sky.moon_angle,
             snapped_camera,
             shadow_settings_hash,
             shadow_scene_revision: frame.shadow_scene_revision,
-            ticks: if cfg!(target_os = "android") { 0 } else { frame.ticks },
-            day_time: if cfg!(target_os = "android") { frame.pack.day_time / 10 } else { frame.pack.day_time },
+            ticks: frame.ticks,
+            day_time: frame.pack.day_time,
             shadow_uniforms_hash,
         }
     }

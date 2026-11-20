@@ -4,7 +4,7 @@ package dev.horizon.android;
 public final class HorizonActivity extends android.app.NativeActivity {
     private static final int REQUEST_MOD_PERMISSIONS = 3;
     private static final String RELEASE_SIGNER =
-            "b83e95a3ff2ff82509300f132506d61b1ca3572a61e80b8588f8be815f7b9b05";
+            "97eff0acd8a9dccf3e1719d239cebdb0916a167838e47ea3b7e2305ca2c60ee7";
     private boolean loaded;
     private java.io.File nativeLibrary;
 
@@ -13,6 +13,9 @@ public final class HorizonActivity extends android.app.NativeActivity {
     private static volatile int sCopyFilesTotal = 0;
     private static volatile String sCopyCurrentFile = "";
 
+    private android.hardware.input.InputManager inputManager;
+    private android.hardware.input.InputManager.InputDeviceListener inputListener;
+    private native void nativeInputDeviceRemoved(int id);
     private native void nativeDocumentResult(int request, int result, String uri);
 
     public static void cancelFolderCopy() {
@@ -24,9 +27,34 @@ public final class HorizonActivity extends android.app.NativeActivity {
     }
 
     @Override protected void onCreate(android.os.Bundle savedInstanceState) {
+        if (BuildConfig.VERIFY_OFFICIAL_SIGNER && !releaseBuild()) {
+            super.onCreate(savedInstanceState);
+            new android.app.AlertDialog.Builder(this).setTitle("NIVORA LAUNCHER")
+                .setMessage("Assinatura inválida. Instale o APK oficial do NIVORA.")
+                .setCancelable(false).setPositiveButton("Fechar", (d,w) -> finish()).show();
+            return;
+        }
         loadGame();
         super.onCreate(savedInstanceState);
         applyHighRefreshRate(this, 0);
+        if (!getPackageName().endsWith(".private")) UpdatePolicy.check(this);
+        inputManager = (android.hardware.input.InputManager) getSystemService(INPUT_SERVICE);
+        if (inputManager != null) {
+            inputListener = new android.hardware.input.InputManager.InputDeviceListener() {
+                public void onInputDeviceAdded(int id) { }
+                public void onInputDeviceChanged(int id) { }
+                public void onInputDeviceRemoved(int id) {
+                    try { nativeInputDeviceRemoved(id); }
+                    catch (UnsatisfiedLinkError ignored) { /* Native startup not complete yet. */ }
+                }
+            };
+            inputManager.registerInputDeviceListener(inputListener, new android.os.Handler(getMainLooper()));
+        }
+    }
+
+    @Override protected void onDestroy() {
+        if (inputManager != null && inputListener != null) inputManager.unregisterInputDeviceListener(inputListener);
+        super.onDestroy();
     }
 
     private void loadGame() {
@@ -54,6 +82,11 @@ public final class HorizonActivity extends android.app.NativeActivity {
         } catch (android.system.ErrnoException ignored) {
         }
         System.loadLibrary("horizon_android");
+    }
+
+    public float controlCanvasHeight() {
+        android.util.DisplayMetrics m = getResources().getDisplayMetrics();
+        return m.heightPixels / Math.max(0.5f, m.density);
     }
 
     public String versionName() {

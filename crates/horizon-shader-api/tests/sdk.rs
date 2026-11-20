@@ -90,3 +90,19 @@ fn packs_and_checks_the_package() {
     assert!(!ok && text.contains("failed the check"), "{text}");
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn catalog_shaders_validate_after_installation() {
+    let root = scratch("catalog");
+    let mut failures = Vec::new();
+    for (id, _, _, _) in horizon_shader_api::all_horizon_shader_packs() {
+        let bytes = horizon_shader_api::build_builtin_hshader_bytes(id).expect(id);
+        let file = root.join(format!("{id}.hshader"));
+        std::fs::write(&file, bytes).unwrap();
+        if let Err(problems) = check(&Pack::read(&file).unwrap()) {
+            failures.push(format!("{id}: {problems:?}"));
+        }
+    }
+    std::fs::remove_dir_all(root).unwrap();
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}

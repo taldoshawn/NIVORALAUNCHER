@@ -7618,7 +7618,8 @@ impl Game<'_> {
     }
     /// `Minecraft.pause`: a single-player game with a pausing screen open.
     fn pauses_game(&self) -> bool {
-        self.has_singleplayer_server()
+        !cfg!(target_os = "android")
+            && self.has_singleplayer_server()
             && !self.is_published()
             && self.title.is_none()
             && (matches!(
@@ -8172,6 +8173,7 @@ impl Game<'_> {
             let indicator =
                 horizon_client::touch::attack_indicator(indicator, self.interaction_crosshair());
             let delay = horizon_client::attack_strength::delay(self.main_hand_attack_speed());
+            let indicator = if self.options.legacy18 { 0 } else { indicator };
             let strength = self.hand_strength.scale(0.0, self.main_hand_attack_speed());
             // The 3D crosshair (F3) takes the 2D one's place.
             // Android aiming schemes need a visible reticle in spectator too.
@@ -8181,7 +8183,7 @@ impl Game<'_> {
                 && !self.debug_crosshair()
                 && self.interaction_crosshair()
             {
-                let attack = (indicator == 1).then_some(strength);
+                let attack = (indicator == 1 && !self.options.legacy18).then_some(strength);
                 let full = attack.is_some_and(|a| {
                     hud_layout::full_attack_indicator(a, delay, self.crosshair_living())
                 });
@@ -13484,6 +13486,8 @@ impl Game<'_> {
                     ticks_since_hit: self.kinetic_hit_ticks(a),
                 });
             let pose = match &*stack.item {
+                item if self.options.legacy18 && self.remote.is_some() && self.right
+                    && hand == Hand::Main && item.ends_with("_sword") => ItemPose::LegacyBlock,
                 _ if let Some(pose) = spear => pose,
                 "minecraft:bow" if using => ItemPose::Bow { ticks_used },
                 "minecraft:crossbow" => {
@@ -15097,6 +15101,18 @@ impl Game<'_> {
             Vec::new()
         };
         let mut hud = horizon_client::spans::time("hud", || self.hud(size));
+        // A blocking multiplayer connection/disconnect screen owns the whole
+        // viewport. Touch HUD controls must not cover or intercept its buttons.
+        // This is a temporary display rule; no saved Pojav HUD is modified.
+        let connection_menu_overlay = self.remote_loading()
+            || self.title.as_ref().is_some_and(|title| {
+                matches!(
+                    &title.mode,
+                    horizon_client::title::Mode::Multiplayer(
+                        horizon_client::multiplayer::Screen::Disconnected { .. }
+                    )
+                )
+            });
         #[cfg(target_os = "android")]
         {
             self.pad.touch.auxiliary_only =
@@ -15137,7 +15153,8 @@ impl Game<'_> {
             self.pad.touch.in_inventory =
                 matches!(self.screen, Screen::Inventory | Screen::Creative);
             self.pad.touch.goy_rendered_by_ui = true;
-            if (in_menu || !self.ui.hide_gui)
+            if !connection_menu_overlay
+                && (in_menu || !self.ui.hide_gui)
                 && (self.player.is_some() || self.settings.keypad.enabled)
                 && (!hud_in_menu
                     || self.android_inventory_controls()
@@ -15158,7 +15175,10 @@ impl Game<'_> {
                 self.pad.touch.break_progress = self.touch_mining_progress();
                 self.pad.touch.draw(&mut hud, &self.gui.atlas);
             }
-            if !self.settings.keypad.enabled && (in_menu || !self.ui.hide_gui) {
+            if !connection_menu_overlay
+                && !self.settings.keypad.enabled
+                && (in_menu || !self.ui.hide_gui)
+            {
                 horizon_client::touch_ui::draw_goy_hud(
                     &self.pad.touch,
                     &mut hud,
@@ -15171,7 +15191,7 @@ impl Game<'_> {
         #[cfg(target_os = "android")]
         {
             self.android_sync_pointer();
-            if self.pad.touch.editor.is_none() {
+            if self.pad.touch.editor.is_none() && !connection_menu_overlay {
                 self.pad.touch_ui.goy_mode = self.pad.touch.settings.control_style
                     == horizon_client::touch::ControlStyle::GoyControl;
                 self.pad
@@ -16331,15 +16351,9 @@ impl ApplicationHandler for Game<'_> {
                 if crate::keyboard_mouse_input() && self.captured && !self.os_mouse_captured {
                     self.os_mouse_captured = crate::platform::capture_mouse(true);
                 }
-                let otg_boost = 2.6
-                    * f64::from(
-                        self.pad
-                            .touch
-                            .settings
-                            .virtual_mouse_sensitivity
-                            .clamp(0.25, 4.0),
-                    );
-                (x * otg_boost, y * otg_boost)
+                // Physical motion already uses the game's mouse sensitivity. Do not
+                // multiply it by the unrelated virtual/touch pointer preference.
+                (x, y)
             };
             self.mouse.on_move(0.0, 0.0, x, y, true, true);
             self.last_input = Instant::now();
@@ -16719,13 +16733,24 @@ impl Game<'_> {
             {
                 return;
             }
-            let menu_custom_hit = !touch_controls_hidden
+            let blocking_connection_menu = self.remote_loading()
+                || self.title.as_ref().is_some_and(|title| {
+                    matches!(
+                        &title.mode,
+                        horizon_client::title::Mode::Multiplayer(
+                            horizon_client::multiplayer::Screen::Disconnected { .. }
+                        )
+                    )
+                });
+            let menu_custom_hit = !blocking_connection_menu
+                && !touch_controls_hidden
                 && in_menu
                 && !self.settings.keypad.enabled
                 && (self.pad.touch.owns_pointer(touch.id)
                     || (touch.phase == TouchPhase::Started
                         && self.pad.touch.custom_at(overlay_point).is_some()));
-            let inventory_control = !touch_controls_hidden
+            let inventory_control = !blocking_connection_menu
+                && !touch_controls_hidden
                 && (self.android_inventory_controls() || self.pad.touch.in_menu)
                 && (self.pad.touch.owns_pointer(touch.id)
                     || (touch.phase == TouchPhase::Started
@@ -16926,6 +16951,28 @@ impl Game<'_> {
                         }
                     }
                 }
+            }
+            return;
+        }
+        // Android's system Back gesture/key is a reliable escape hatch while
+        // ConnectScreen owns the whole viewport. Vanilla ignores Escape here,
+        // but a mobile user must not be trapped if a HUD preset overlaps Cancel.
+        #[cfg(target_os = "android")]
+        if self.remote_loading()
+            && self.connect_cancel(self.gui_size()).is_some()
+            && let WindowEvent::KeyboardInput { event: key, .. } = &event
+            && key.state == ElementState::Pressed
+            && (matches!(key.physical_key, PhysicalKey::Code(KeyCode::Escape))
+                || matches!(
+                    &key.logical_key,
+                    winit::keyboard::Key::Named(
+                        winit::keyboard::NamedKey::BrowserBack
+                            | winit::keyboard::NamedKey::Escape
+                    )
+                ))
+        {
+            if let Err(error) = self.leave_server(None) {
+                log::warn!("Android Back cancel while connecting: {error}");
             }
             return;
         }
@@ -18343,6 +18390,16 @@ impl Game<'_> {
     /// winit's `about_to_wait`: what happens between frames (stop requests, the closing
     /// save, world entry, the control socket, pads), then the next frame.
     pub(super) fn idle(&mut self, event_loop: &dyn EventLoopCtl) {
+        #[cfg(target_os = "android")]
+        if horizon_client::android_runtime::take_peripheral_reset() {
+            self.android_release_touch_keys(true);
+            self.keys.clear(); self.physical_keys.clear(); self.physical_buttons.clear();
+            self.left = false; self.right = false;
+            horizon_client::android_runtime::clear_keypad();
+            horizon_client::android_runtime::clear_gamepads();
+            self.capture(false);
+            crate::touch_input(true);
+        }
         // A splitscreen player's game has nothing to save: P1's shuts the process down.
         #[cfg(target_os = "android")]
         self.android_apply_display_scale();

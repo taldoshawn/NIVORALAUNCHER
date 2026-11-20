@@ -159,6 +159,14 @@ fn runtime() -> &'static Mutex<DynamicRuntimeState> {
 /// Live check whether `mod_id` is enabled in Options > Mods / Launcher across both the
 /// Client Window thread and the Singleplayer Integrated Server thread.
 pub(super) fn native_on_check(game: &Game<'_>, mod_id: &str) -> bool {
+    if horizon_client::mod_list::pvp_feature(mod_id).is_some() {
+        if !horizon_client::mod_list::remote::available(mod_id) { return false; }
+        return game.options.legacy18
+            && horizon_client::mod_list::is_live_disabled(mod_id)
+                .map(|disabled| !disabled)
+                .unwrap_or_else(|| game.settings.mods.enabled.contains(mod_id)
+                    && !game.settings.mods.disabled.contains(mod_id));
+    }
     if let Some(live_disabled) = horizon_client::mod_list::is_live_disabled(mod_id) {
         return !live_disabled;
     }
@@ -448,6 +456,7 @@ pub(super) fn parse_dynamic_hnmod(path: &std::path::Path) -> Option<DynamicHnmod
 }
 
 fn ensure_dynamic_mods_loaded(game: &Game<'_>, force: bool) {
+    horizon_client::mod_list::remote::refresh(&horizon_client::logging::private_home());
     let _ = game;
     let mut guard = match runtime().lock() {
         Ok(g) => g,
@@ -568,6 +577,19 @@ fn ensure_dynamic_mods_loaded(game: &Game<'_>, force: bool) {
                 parsed.vein_key_held = prev.vein_key_held;
             }
             discovered.entry(parsed.id.clone()).or_insert(parsed);
+        }
+    }
+    // Register original native overlays directly; no downloaded bundle or Forge claim.
+    if game.options.legacy18 {
+        for (id, title, description) in horizon_client::mod_list::ANDROID_BUNDLED {
+            let Some(feature) = horizon_client::mod_list::pvp_feature(id) else { continue; };
+            let (title, description) = horizon_client::mod_list::remote::labels(id, title, description);
+            discovered.insert(id.into(), DynamicHnmod {
+                id: id.into(), title: title.into(), description: description.into(),
+                features: [feature.to_owned()].into_iter().collect(),
+                custom_buttons: Vec::new(), items: Vec::new(), blocks: Vec::new(),
+                keys: Vec::new(), commands: Vec::new(), zoom_held: false, vein_key_held: false,
+            });
         }
     }
     guard.mods = discovered;
@@ -1955,6 +1977,17 @@ pub(super) fn native_hud(
         }
 
         // 3. FPS Counter
+        if m.features.contains("cps_overlay") {
+            let label = format!("LMB: {lmb_cps} CPS | RMB: {rmb_cps} CPS");
+            let w = game.native_text_width(&label) + 10.0;
+            let corner = setting_corner(game, &m.id, Corner::TopRight);
+            if game.native_corner_shown(corner) {
+                let (x, y) = corners.place(corner, w, 14.0);
+                game.native_fill(batch, [x, y, w, 14.0], 0x7814121E);
+                game.native_text(batch, &label, [x + 5.0, y + 3.0], 0x90CAF9, true);
+            }
+            continue;
+        }
         if m.features.contains("fps_overlay") {
             let corner = setting_corner(game, &m.id, Corner::TopLeft);
             if !game.native_corner_shown(corner) {
