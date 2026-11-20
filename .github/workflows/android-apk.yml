@@ -3,7 +3,7 @@ run-name: NIVORA LAUNCHER APK · ${{ github.sha }}
 
 on:
   push:
-    branches: [main]
+    branches: [main, codex/private-hud-peripherals]
     paths-ignore: ['docs/**', '**/*.md']
   workflow_dispatch:
     inputs:
@@ -33,7 +33,7 @@ concurrency:
 
 jobs:
   build:
-    if: (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') && (github.event_name != 'workflow_dispatch' || inputs.universal_source_run_id == '')
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/codex/private-hud-peripherals' || github.event_name == 'workflow_dispatch') && (github.event_name != 'workflow_dispatch' || inputs.universal_source_run_id == '')
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     strategy:
@@ -224,7 +224,11 @@ jobs:
         run: rm -f .local/android/ci.keystore .local/android/debug.keystore
 
   universal:
-    if: always() && github.event_name == 'workflow_dispatch' && inputs.universal && (needs.build.result == 'success' || (needs.build.result == 'skipped' && inputs.universal_source_run_id != ''))
+    if: >-
+      always() && (
+        (github.event_name == 'workflow_dispatch' && inputs.universal) ||
+        (github.event_name == 'push' && github.ref == 'refs/heads/codex/private-hud-peripherals')
+      ) && (needs.build.result == 'success' || (needs.build.result == 'skipped' && inputs.universal_source_run_id != ''))
     needs: build
     permissions:
       contents: read
@@ -317,3 +321,71 @@ jobs:
           path: dist/
           if-no-files-found: error
           retention-days: 30
+
+  publish_alpha9:
+    # One-shot release: the exact intentional push message is the publishing gate.
+    # Other branch pushes only build artifacts and never publish downloads.
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/codex/private-hud-peripherals' &&
+      startsWith(github.event.head_commit.message, 'release: NIVORA 0.1.0-alpha.9 Rust-only home') &&
+      needs.universal.result == 'success'
+    needs: universal
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Download universal APK from this exact successful build
+        run: |
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "nivora-$GITHUB_RUN_NUMBER-universal" --dir dist
+      - name: Verify provenance, signing, checksum and Android package
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" 'build-tools;35.0.0' >/dev/null
+          python3 - <<'PYCODE'
+          import hashlib, json, os, zipfile
+          from pathlib import Path
+          p=Path('dist')
+          apk=p/f'Nivora-Launcher-{os.environ["GITHUB_RUN_NUMBER"]}-universal.apk'
+          m=json.loads((p/'BUILD.json').read_text())
+          digest=hashlib.sha256(apk.read_bytes()).hexdigest()
+          assert m['commit']==os.environ['GITHUB_SHA']
+          assert m['assembly_commit']==os.environ['GITHUB_SHA']
+          assert m['signing']=='repository-key'
+          assert not m['requires_official_resigning']
+          assert m['sha256']==digest
+          assert 1000+int(os.environ['GITHUB_RUN_NUMBER'])>1047, 'Must upgrade alpha.8'
+          audit=json.loads((p/'audit.json').read_text())
+          assert audit['passed'] and audit['sha256']==digest
+          with zipfile.ZipFile(apk) as z:
+              assert z.testzip() is None
+              assert z.getinfo('resources.arsc').compress_type==zipfile.ZIP_STORED
+          m['release_version']='0.1.0-alpha.9'
+          m['version_code']=1000+int(os.environ['GITHUB_RUN_NUMBER'])
+          (p/'BUILD.json').write_text(json.dumps(m,indent=2)+'\n')
+          PYCODE
+          (cd dist && sha256sum --check SHA256SUMS.txt)
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 dist/*.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs dist/*.apk > dist/signature.txt
+          grep -Fqi 'Signer #1 certificate SHA-256 digest: 97eff0acd8a9dccf3e1719d239cebdb0916a167838e47ea3b7e2305ca2c60ee7' dist/signature.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging dist/*.apk > badging.txt
+          grep -q "package: name='dev.taldoshawn.pojav'" badging.txt
+      - name: Publish experimental universal APK to official GitHub Releases
+        run: |
+          if gh release view v0.1.0-alpha.9 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'The alpha.9 release already exists. Refusing to overwrite it.'
+            exit 1
+          fi
+          gh release create v0.1.0-alpha.9 \
+            dist/*.apk dist/BUILD.json dist/SHA256SUMS.txt dist/signature.txt dist/audit.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title 'Nivora Launcher 0.1.0-alpha.9 — Rust-only home' \
+            --notes-file docs/release-alpha9-rust-home.md \
+            --prerelease
