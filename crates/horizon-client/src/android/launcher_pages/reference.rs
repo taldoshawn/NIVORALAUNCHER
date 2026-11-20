@@ -2,11 +2,11 @@
 use super::*;
 use horizon_client::content_files::Kind;
 use std::sync::OnceLock;
-const WHITE: u32 = color::hex(0xF6F5FA, 255);
-const MUTED: u32 = color::hex(0xA6A4B2, 255);
-const LINE: u32 = color::hex(0x292832, 255);
-const CARD: u32 = color::hex(0x111118, 255);
-const ACCENT: u32 = color::hex(0x8550F6, 255);
+const WHITE: u32 = color::hex(0xF8F7FF, 255);
+const MUTED: u32 = color::hex(0xB4B0C5, 255);
+const LINE: u32 = color::hex(0x3B3550, 255);
+const CARD: u32 = color::hex(0x171321, 255);
+const ACCENT: u32 = color::hex(0x9A70FF, 255);
 struct Art {
     width: u32,
     height: u32,
@@ -54,16 +54,26 @@ fn picture(ui: &mut Ui, brand: bool, r: [f32; 4]) {
     );
 }
 fn rect(ui: &mut Ui, r: [f32; 4], radius: f32) {
-    ui.rounded(r[0], r[1], r[2], r[3], radius, CARD);
+    // Layered glass-dark surfaces stay legible over the detailed hero illustration.
+    ui.rounded(r[0], r[1], r[2], r[3], radius, color::hex(0x110F1B, 255));
+    ui.rounded(
+        r[0] + 1.0, r[1] + 1.0,
+        (r[2] - 2.0).max(0.0), (r[3] - 2.0).max(0.0),
+        (radius - 1.0).max(0.0), CARD,
+    );
     ui.border(r[0], r[1], r[2], r[3], radius, LINE);
 }
 fn purple(ui: &mut Ui, r: [f32; 4], radius: f32, active: bool) {
-    let surface = if active { 0x653AC5 } else { 0x292237 };
-    ui.rounded(r[0], r[1], r[2], r[3], radius, color::hex(surface, 255));
+    // Use one recognizable gradient-like violet language for primary actions and navigation.
     if active {
-        ui.border(r[0], r[1], r[2], r[3], radius, color::hex(0xBC9AFF, 130));
+        ui.rounded(r[0], r[1], r[2], r[3], radius, color::hex(0x5430B1, 255));
+        ui.rounded(r[0], r[1], r[2] * 0.6, r[3], radius, color::hex(0x7244DF, 205));
+        ui.border(r[0], r[1], r[2], r[3], radius, color::hex(0xC1A3FF, 150));
+        ui.fill(r[0] + 18.0, r[1] + 3.0, (r[2] - 36.0).max(0.0), 1.0, color::hex(0xE3D5FF, 100));
     } else {
-        ui.rounded(r[0] + 3.0, r[1] + r[3] * 0.3, 3.0, r[3] * 0.4, 1.5, ACCENT);
+        ui.rounded(r[0], r[1], r[2], r[3], radius, color::hex(0x332048, 255));
+        ui.border(r[0], r[1], r[2], r[3], radius, color::hex(0x9967DC, 125));
+        ui.rounded(r[0] + 3.0, r[1] + r[3] * 0.25, 3.0, r[3] * 0.5, 1.5, ACCENT);
     }
 }
 fn label(ui: &mut Ui, size: f32, r: [f32; 4], text: &str, primary: bool) {
@@ -102,8 +112,13 @@ impl Launcher {
     pub(super) fn reference_shell(&mut self, ui: &mut Ui) -> Layout {
         let s = (ui.w / 1232.0).min(ui.h / 576.0).max(0.25);
         let sidebar = 286.0 * s;
-        ui.fill(0.0, 0.0, ui.w, ui.h, color::hex(0x0B0B11, 255));
-        ui.fill(sidebar, 0.0, 1.0, ui.h, color::hex(0x24232D, 160));
+        ui.fill(0.0, 0.0, ui.w, ui.h, color::hex(0x0B0A13, 255));
+        // Persistent Rust launcher: a restrained sidebar rather than a second Android menu.
+        ui.fill(0.0, 0.0, sidebar, ui.h, color::hex(0x10101B, 255));
+        ui.fill(sidebar - 1.0 * s, 0.0, 1.0 * s, ui.h, color::hex(0x5F5077, 135));
+        ui.fill(0.0, 0.0, 4.0 * s, ui.h, color::hex(0x532C9C, 70));
+        ui.rounded(20.0 * s, 16.0 * s, 252.0 * s, 82.0 * s, 17.0 * s, color::hex(0x1D172E, 255));
+        ui.border(20.0 * s, 16.0 * s, 252.0 * s, 82.0 * s, 17.0 * s, color::hex(0x755699, 115));
         picture(ui, true, [37.0 * s, 24.0 * s, 53.0 * s, 55.0 * s]);
         // Keep the full brand inside the sidebar at every UI scale.
         let brand_width = sidebar - 103.0 * s - 18.0 * s;
@@ -139,7 +154,8 @@ impl Launcher {
             let r = [22.0 * s, (116.0 + i as f32 * 58.0) * s, 250.0 * s, 56.0 * s];
             let on = self.catalog.page == page;
             if on {
-                purple(ui, r, 14.0 * s, false)
+                purple(ui, r, 14.0 * s, false);
+                ui.fill(10.0 * s, r[1] + 15.0 * s, 3.0 * s, 26.0 * s, ACCENT);
             }
             ui.icon(
                 icon,
@@ -156,6 +172,9 @@ impl Launcher {
                 if on { WHITE } else { color::hex(0xCAC7D1, 255) },
                 name,
             );
+            if on {
+                ui.icon(Icon::ChevronDown, r[0] + r[2] - 35.0 * s, r[1] + 21.0 * s, 15.0 * s, color::hex(0xC8A8FF, 255));
+            }
             self.targets.push((r, Action::Page(page)));
         }
         ui.fill(40.0 * s, ui.h - 51.0 * s, 3.0 * s, 23.0 * s, ACCENT);
@@ -175,6 +194,8 @@ impl Launcher {
             .unwrap_or(&self.catalog.config.name);
         let width = (ui.measure(Face::SemiBold, 17.0 * s, name) + 84.0 * s).min(270.0 * s);
         let account = [ui.w - width - 32.0 * s, 24.0 * s, width, 52.0 * s];
+        ui.rounded(account[0], account[1], account[2], account[3], 13.0 * s, color::hex(0x201B2D, 245));
+        ui.border(account[0], account[1], account[2], account[3], 13.0 * s, color::hex(0x675580, 155));
         ui.avatar_head_2d(account[0] + 5.0 * s, account[1] + 4.0 * s, 43.0 * s, name);
         ui.text_clipped(
             Face::SemiBold,
@@ -243,7 +264,19 @@ impl Launcher {
         let Layout { s, x, w } = l;
         let hero = [x, 106.0 * s, w, 264.0 * s];
         picture(ui, false, hero);
-        ui.border(x, hero[1], w, hero[3], 28.0 * s, LINE);
+        // Quiet left-to-right scrim protects text contrast on bright shader/landscape artwork.
+        // Keep the right side unobstructed to show the actual launcher illustration.
+        for (i, alpha) in [190_u8, 128, 74, 28].into_iter().enumerate() {
+            ui.fill(
+                x + i as f32 * (w * 0.13), hero[1],
+                w * 0.13 + 1.0, hero[3],
+                color::hex(0x0A0920, alpha),
+            );
+        }
+        ui.border(x, hero[1], w, hero[3], 28.0 * s, color::hex(0x75609A, 160));
+        ui.rounded(x + 33.0 * s, hero[1] + 37.0 * s, 4.0 * s, 16.0 * s, 2.0 * s, ACCENT);
+        ui.text(Face::SemiBold, 12.0 * s, x + 47.0 * s, hero[1] + 38.0 * s,
+            color::hex(0xD3C8F8, 255), "NIVORA  /  RUST CLIENT");
         ui.text(
             Face::Medium,
             17.0 * s,
@@ -300,6 +333,9 @@ impl Launcher {
             cx += cw + 12.0 * s;
         }
         let play = [x + w - 300.0 * s, 255.0 * s, 196.0 * s, 71.0 * s];
+        // A clear primary action with deliberate contrast to the secondary selector.
+        ui.rounded(play[0] - 3.0 * s, play[1] - 3.0 * s, play[2] + 6.0 * s, play[3] + 6.0 * s,
+            21.0 * s, color::hex(0x6B3AD6, 65));
         purple(ui, play, 19.0 * s, true);
         ui.icon(
             Icon::Play,
@@ -358,8 +394,12 @@ impl Launcher {
         {
             let r = [x + i as f32 * (cw + gap), 398.0 * s, cw, 98.0 * s];
             rect(ui, r, 16.0 * s);
+            ui.rounded(r[0] + 14.0 * s, r[1] + 12.0 * s, 32.0 * s, 30.0 * s,
+                9.0 * s, color::hex(0x34234C, 255));
+            ui.fill(r[0] + 18.0 * s, r[1] + 2.0 * s, (cw - 36.0 * s).max(0.0),
+                2.0 * s, color::hex(0x8157CE, 120));
             let inset = 18.0 * s;
-            ui.icon(icon, r[0] + inset, r[1] + 15.0 * s, 21.0 * s, MUTED);
+            ui.icon(icon, r[0] + inset + 5.0 * s, r[1] + 16.0 * s, 21.0 * s, WHITE);
             ui.icon(Icon::ArrowRight, r[0] + cw - 31.0 * s, r[1] + 17.0 * s, 15.0 * s, MUTED);
             ui.text_clipped(Face::SemiBold, 20.0 * s, r[0] + inset, r[1] + 43.0 * s,
                 cw - 2.0 * inset, WHITE, name);
