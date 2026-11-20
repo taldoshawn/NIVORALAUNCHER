@@ -140,8 +140,7 @@ jobs:
           from pathlib import Path
           present = [bool(os.environ.get(k)) for k in ('KEYSTORE_BASE64', 'KEYSTORE_PASSWORD', 'KEY_ALIAS')]
           if not any(present):
-              print('No repository signing key: build uses an ephemeral development certificate.')
-              raise SystemExit(0)
+              raise SystemExit('Official NIVORA APK build requires the repository signing key')
           if not all(present):
               raise SystemExit('Repository Android signing secrets are incomplete')
           path = Path('.local/android/ci.keystore').resolve()
@@ -293,13 +292,11 @@ jobs:
           subprocess.run([str(tools/'zipalign'), '-P', '16', '-f', '4', 'universal-unsigned.apk', 'universal-aligned.apk'], check=True)
           key = Path('universal.keystore')
           configured = bool(os.environ.get('KEYSTORE_BASE64'))
-          if configured:
-              assert os.environ.get('KEYSTORE_PASSWORD') and os.environ.get('KEY_ALIAS')
-              key.write_bytes(base64.b64decode(os.environ['KEYSTORE_BASE64'], validate=True)); key.chmod(0o600)
-          else:
-              os.environ['KEYSTORE_PASSWORD'] = 'android'
-              os.environ['KEY_ALIAS'] = 'androiddebugkey'
-              subprocess.run(['keytool', '-genkeypair', '-keystore', str(key), '-storepass:env', 'KEYSTORE_PASSWORD', '-keypass:env', 'KEYSTORE_PASSWORD', '-alias', 'androiddebugkey', '-keyalg', 'RSA', '-dname', 'CN=Nivora Development', '-validity', '30'], check=True)
+          if not configured:
+              raise SystemExit('Universal NIVORA APK requires the official signing key')
+          assert os.environ.get('KEYSTORE_PASSWORD') and os.environ.get('KEY_ALIAS')
+          key.write_bytes(base64.b64decode(os.environ['KEYSTORE_BASE64'], validate=True))
+          key.chmod(0o600)
           apk = Path('dist') / f'Nivora-Launcher-{os.environ["GITHUB_RUN_NUMBER"]}-universal.apk'
           try:
               subprocess.run([str(tools/'apksigner'), 'sign', '--ks', str(key), '--ks-key-alias', os.environ['KEY_ALIAS'], '--ks-pass', 'env:KEYSTORE_PASSWORD', '--out', str(apk), 'universal-aligned.apk'], check=True)
@@ -313,9 +310,9 @@ jobs:
           (apk.parent/'audit.json').write_text(json.dumps(report, indent=2))
           digest = hashlib.sha256(apk.read_bytes()).hexdigest()
           (apk.parent/'SHA256SUMS.txt').write_text(f'{digest}  {apk.name}\n')
-          (apk.parent/'BUILD.json').write_text(json.dumps({'commit':os.environ.get('APK_SOURCE_COMMIT', os.environ['GITHUB_SHA']), 'assembly_commit':os.environ['GITHUB_SHA'], 'abi':'universal', 'min_sdk':28, 'bytes':apk.stat().st_size, 'sha256':digest, 'signing':'repository-key' if configured else 'ephemeral-development', 'requires_official_resigning':not configured, 'device_tested':False}, indent=2))
+          (apk.parent/'BUILD.json').write_text(json.dumps({'commit':os.environ.get('APK_SOURCE_COMMIT', os.environ['GITHUB_SHA']), 'assembly_commit':os.environ['GITHUB_SHA'], 'abi':'universal', 'min_sdk':28, 'bytes':apk.stat().st_size, 'sha256':digest, 'signing':'repository-key', 'requires_official_resigning':False, 'device_tested':False}, indent=2))
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
-              f.write(f'Universal APK: {apk.stat().st_size / 1024**2:.1f} MiB. Android 9+. Contains ARM64, ARMv7, x86 and x86_64. '+('Repository signing key.' if configured else 'Development signature: must be resigned with the official key before use; startup certificate verification remains enabled.'))
+              f.write(f'Universal APK: {apk.stat().st_size / 1024**2:.1f} MiB. Android 9+. Contains ARM64, ARMv7, x86 and x86_64. '+('Official NIVORA signing key verified.'))
           PYCODE
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
