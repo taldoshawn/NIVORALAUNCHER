@@ -184,7 +184,7 @@ impl Launcher {
             54.0 * s,
             ui.h - 47.0 * s,
             MUTED,
-            if option_env!("NIVORA_PRIVATE_TEST")==Some("1") {"TESTE PRIVADO"} else {"v0.1.0"},
+            "NIVORA LAUNCHER",
         );
         // Header actions keep actual account names and skin selection.
         let name = self
