@@ -89,6 +89,7 @@ jobs:
       - name: Test protocol and packaging boundaries
         run: |
           python3 tools/check_public_tree.py
+          python3 -m unittest discover -s tests -p 'test_android_prepare_pins.py'
           python3 -m unittest discover -s tests -p 'test_android_release_audit.py'
           cargo test -p horizon-protocol --lib --test legacy18 --locked
           python3 tools/test_android_updater.py

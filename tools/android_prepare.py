@@ -17,10 +17,13 @@ import hashlib
 import zipfile
 import tempfile
 
-import lab
+try:
+    from . import lab
+except ImportError:
+    import lab
 
 ROOT = Path(__file__).resolve().parents[1]
-MANIFEST = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
+PACKAGES = "https://piston-meta.mojang.com/v1/packages"
 RUNTIMES = "https://launchermeta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json"
 
 
@@ -56,30 +59,18 @@ def download_game(version, directory):
     pins = json.loads((ROOT / 'research-lock.json').read_text())['minecraft']
     if version != pins['version']:
         raise ValueError(f"This engine implements {pins['version']}; {version} is unsupported")
-    entry = next((v for v in fetch_json(MANIFEST)['versions'] if v['id'] == version), None)
-    if entry is None:
-        raise ValueError(f"Mojang does not list Minecraft {version}")
-    # Mojang metadata may be republished: lab.download checks the catalog SHA-1,
-    # and client/server jar hashes are checked against the engine pins below.
     versions = directory / 'versions' / version
     manifest_path = versions / f'{version}.json'
-    lab.download(entry['url'], manifest_path, entry['sha1'])
-    # Seed the engine-pinned manifest so horizon-prepare always has an accepted version file
-    # even when upstream Mojang metadata is republished.
-    pinned_manifest = pins.get('manifest_sha1')
-    if pinned_manifest:
-        destination = ROOT / '.local/minecraft' / version / 'manifest.json'
-        if not destination.is_file():
-            try:
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                lab.download(
-                    f"https://piston-meta.mojang.com/v1/packages/{pinned_manifest}/{version}.json",
-                    destination,
-                    pinned_manifest,
-                )
-            except Exception:
-                pass
+    # The preparer reads this exact manifest. A republished version can change
+    # libraries while keeping the same game jars, leaving its pinned dependencies
+    # absent if we download from the moving catalog instead.
+    pinned_manifest = pins['manifest_sha1']
+    manifest_url = f'{PACKAGES}/{pinned_manifest}/{version}.json'
+    lab.download(manifest_url, manifest_path, pinned_manifest)
+    lab.download(manifest_url, ROOT / '.local/minecraft' / version / 'manifest.json', pinned_manifest)
     manifest = json.loads(manifest_path.read_text())
+    if manifest.get('id') != version:
+        raise ValueError('Pinned manifest describes a different Minecraft version')
     files = []
     for side in ['client', 'server']:
         artifact = manifest['downloads'][side]
