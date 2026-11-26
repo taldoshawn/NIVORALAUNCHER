@@ -13,6 +13,7 @@ pub(super) enum Kind {
     CacheBudget,
     MemoryTarget,
     MaxFps,
+    TextureBudget,
     WorkerLimit,
     Renderer,
     RenderScale,
@@ -102,6 +103,19 @@ impl Launcher {
                             )
                         })
                         .collect(),
+                )
+            }
+            Kind::TextureBudget => {
+                let opts = horizon_client::settings::Settings::load(
+                    &c.game_home(&self.home).join("options.txt"),
+                );
+                (
+                    "Memória das texturas de blocos",
+                    "Orçamento do nível principal das texturas de terreno. Mipmaps, interface e outras alocações ficam fora. Preserva o mínimo de 16 px. Aplica ao jogar.",
+                    [0, 16, 32, 64, 128, 256, 512].into_iter().map(|mib| (
+                        if mib == 0 { "Automático (256 MiB)".into() } else { format!("{mib} MiB") },
+                        String::new(), Action::ChooseTextureBudget(mib), opts.horizon.texture_budget_mib == mib,
+                    )).collect(),
                 )
             }
             Kind::MemoryTarget => (

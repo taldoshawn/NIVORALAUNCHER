@@ -92,7 +92,9 @@ permitir comparar sessões no aparelho.
 Na primeira abertura desta atualização, aparelhos com MemTotal de até 2304 MiB
 recebem um ponto de partida leve: visão 4, simulação 5, escala 50%, 60 FPS,
 cache 16 MiB, um worker, alvo de RSS 768 MiB, LOD e shaders desligados.
-O atlas de interface é limitado a 4096 px, usando o redimensionamento móvel
+HDR e antialiasing temporal ficam desligados, e as texturas de blocos usam
+orçamento de 16 MiB no nível principal (mipmaps e o mínimo de 16 px ficam fora
+desse orçamento). O atlas de interface é limitado a 4096 px, usando o redimensionamento móvel
 existente para texturas não essenciais. A resolução do terreno não é alterada
 por esse atlas. O launcher também respeita um prazo entre redraws.
 

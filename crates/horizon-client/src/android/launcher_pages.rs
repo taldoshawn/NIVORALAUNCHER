@@ -366,6 +366,8 @@ pub(super) enum Action {
     ToggleCompactAtlas,
     ChooseMemoryTarget(u32),
     ChooseMaxFps(u32),
+    TextureBudget,
+    ChooseTextureBudget(u32),
     ToggleBundled(&'static str),
     WorldFiles,
     GameFiles,
@@ -4598,10 +4600,10 @@ impl Launcher {
         match cat {
             SettingsCategory::Video => {
                 let c = &self.catalog.config;
-                let count = 17;
+                const ROW_COUNT: usize = 20;
                 let extra_ime = if ime_top_dp.is_some() { 180.0 } else { 0.0 };
                 let max_scroll =
-                    (count as f32 * step_y + extra_ime - (list_bottom - list_top)).max(0.0);
+                    (ROW_COUNT as f32 * step_y + extra_ime - (list_bottom - list_top)).max(0.0);
                 self.catalog.scroll = self.catalog.scroll.clamp(0.0, max_scroll);
                 self.list_view = Some([list_top, list_bottom, max_scroll]);
 
@@ -4612,6 +4614,11 @@ impl Launcher {
                     self.catalog.render_scale_text.clone()
                 } else {
                     format!("{res_pct}%")
+                };
+                let texture_str = if opts.horizon.texture_budget_mib == 0 {
+                    "Auto (256 MiB) v".to_owned()
+                } else {
+                    format!("{} MiB v", opts.horizon.texture_budget_mib)
                 };
                 let hz_str = format!("{} v", c.device.display_label());
                 let aspect_str = format!("{} v", c.screen.aspect.label());
@@ -4635,7 +4642,7 @@ impl Launcher {
                 };
                 let game_anim_off = c.disable_game_animations || touch_cfg.disable_game_animations;
 
-                let rows: [(&str, &str, SettingControl<'_>); 19] = [
+                let rows: [(&str, &str, SettingControl<'_>); ROW_COUNT] = [
                     (
                         "DISPLAY, RESOLUTION & RENDERER PIPELINE",
                         "Hardware GPU backend, 3D resolution scale, refresh rate & display geometry",
@@ -4732,6 +4739,11 @@ impl Launcher {
                         SettingControl::Button(&preset_str, Action::CycleGraphicsPreset, false),
                     ),
                     (
+                        "Memória das texturas de blocos",
+                        "Orçamento do nível principal de terreno; aplica ao jogar",
+                        SettingControl::Button(&texture_str, Action::TextureBudget, false),
+                    ),
+                    (
                         "Limite de FPS",
                         "Limite os frames para economizar energia ou aproveitar uma tela rápida",
                         SettingControl::Button(&fps_str, Action::CycleMaxFps, false),
@@ -4792,16 +4804,16 @@ impl Launcher {
             }
             SettingsCategory::Launcher => {
                 let c = &self.catalog.config;
-                let count = 12;
+                const ROW_COUNT: usize = 15;
                 let extra_ime = if ime_top_dp.is_some() { 180.0 } else { 0.0 };
                 let max_scroll =
-                    (count as f32 * step_y + extra_ime - (list_bottom - list_top)).max(0.0);
+                    (ROW_COUNT as f32 * step_y + extra_ime - (list_bottom - list_top)).max(0.0);
                 if self.catalog.editing == Some("server")
                     && let Some(ime_y) = ime_top_dp
                 {
-                    let server_y = list_top + 10.0 * step_y - self.catalog.scroll;
+                    let server_y = list_top + 13.0 * step_y - self.catalog.scroll;
                     if server_y + card_h > ime_y - 12.0 {
-                        self.catalog.scroll = (list_top + 10.0 * step_y + card_h - (ime_y - 16.0))
+                        self.catalog.scroll = (list_top + 13.0 * step_y + card_h - (ime_y - 16.0))
                             .clamp(0.0, max_scroll);
                     }
                 }
@@ -4834,7 +4846,7 @@ impl Launcher {
                 };
                 let game_anim_off = c.disable_game_animations || touch_cfg.disable_game_animations;
 
-                let rows: [(&str, &str, SettingControl<'_>); 15] = [
+                let rows: [(&str, &str, SettingControl<'_>); ROW_COUNT] = [
                     (
                         "APPEARANCE, DPI SCALING & MOTION",
                         "Material 3 Expressive theme studio, adaptive phone DPI scaling & animation toggles",
@@ -6463,6 +6475,8 @@ impl Launcher {
                             horizon_client::graphics::Preset::Performance, s,
                         );
                         s.horizon.battery = false;
+                        s.smooth_lighting = false;
+                        s.menu_blur = 0;
                     });
                 }
                 horizon_client::ui_theme::motion::set_reduced_motion(
@@ -6486,6 +6500,9 @@ impl Launcher {
                     self.modify_game_settings(|s| {
                         s.max_fps = 60;
                         s.vsync = true;
+                        s.render_distance = s.render_distance.min(8);
+                        s.simulation_distance = s.simulation_distance.min(5);
+                        s.menu_blur = 0;
                         s.horizon.present_mode = horizon_client::graphics::PresentMode::Fifo;
                     });
                 } else if self.catalog.config.device.display_hz == 60 {
@@ -6912,6 +6929,12 @@ impl Launcher {
                 self.catalog.config.compact_atlas ^= true;
                 self.catalog.config.save(&self.home)?;
                 self.catalog.status = "Tamanho do atlas salvo. Reabra o app para reconstruir a interface com este limite.".into();
+            }
+            Some(Action::TextureBudget) => self.open_chooser(chooser::Kind::TextureBudget),
+            Some(Action::ChooseTextureBudget(mib)) => {
+                self.modify_game_settings(|s| s.horizon.texture_budget_mib = mib.min(16384));
+                self.chooser = None;
+                self.catalog.status = "Orçamento das texturas de blocos salvo. Aplica ao jogar; não limita toda a memória da GPU.".into();
             }
             Some(Action::MemoryTarget) => self.open_chooser(chooser::Kind::MemoryTarget),
             Some(Action::ChooseMemoryTarget(mib)) => {

@@ -730,6 +730,11 @@ pub fn apply_low_memory_profile(s: &mut crate::settings::Settings) {
     s.horizon.pacing = Pacing::Efficient;
     s.horizon.battery = false;
     s.horizon.lod_distance = 0;
+    s.horizon.texture_budget_mib = 16;
+    s.horizon.taa = false;
+    s.horizon.fxaa = false;
+    s.horizon.upscaling = Upscaling::Native;
+    s.horizon.hdr = false;
     s.horizon.resolution_scale = 50;
     s.horizon.upload_budget_kib = 1024;
     s.horizon.shader_pack.clear();
@@ -747,6 +752,9 @@ mod tests {
         s.simulation_distance = 32;
         s.horizon.lod_distance = 1024;
         s.horizon.shader_pack = "heavy.hshader".into();
+        s.horizon.taa = true;
+        s.horizon.hdr = true;
+        s.horizon.upscaling = Upscaling::Quality;
         apply_low_memory_profile(&mut s);
         assert_eq!((s.render_distance, s.simulation_distance), (4, 5));
         assert_eq!(s.horizon.lod_distance, 0);
@@ -765,6 +773,10 @@ mod tests {
         assert_eq!(loaded.horizon.pacing, Pacing::Efficient);
         assert_eq!(loaded.horizon.resolution_scale, 50);
         assert_eq!(loaded.horizon.upload_budget_kib, 1024);
+        assert_eq!(loaded.horizon.texture_budget_mib, 16);
+        assert!(!loaded.horizon.taa);
+        assert!(!loaded.horizon.hdr);
+        assert_eq!(loaded.horizon.upscaling, Upscaling::Native);
         std::fs::remove_dir_all(dir).unwrap();
     }
 

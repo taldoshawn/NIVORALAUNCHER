@@ -98,6 +98,7 @@ jobs:
           cargo test -p horizon-client-input --lib window::tests --locked
           cargo test -p horizon-client-render --no-default-features --lib graphics::tests --locked
           cargo test -p horizon-client-render --no-default-features --lib hud::tests::mobile_ --locked
+          cargo test -p horizon-client-render --no-default-features --lib sprites::tests::the_texture_budget_picks_the_largest_side_that_fits --locked
           rustc --edition=2024 --test crates/horizon-client/src/android/local_profiles.rs -o /tmp/pojav-local-profile-tests
           /tmp/pojav-local-profile-tests
           rustc --edition=2024 --test crates/horizon-client/src/android/fps_hud.rs -o /tmp/pojav-fps-hud-tests
