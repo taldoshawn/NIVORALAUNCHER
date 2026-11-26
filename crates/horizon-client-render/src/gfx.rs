@@ -257,6 +257,14 @@ mod view;
 mod wgsl_prefix;
 mod world_post;
 
+// Celestial geometry lives 100 blocks from the eye, independently of terrain's
+// render distance. Keep it at reverse-Z's far plane even when shader packs
+// disable the late-sky optimization.
+const CELESTIAL_VERTEX_ENTRY: &str = "vs_entity_sky";
+
+#[cfg(test)]
+mod celestial_tests;
+
 /// A section's instance: its camera-relative origin and, in `w`, the step of
 /// its fixed-point UVs (`terrain.wgsl`'s `terrain_uv`).
 /// The world pass again after occlusion culling's test: it loads both
@@ -3226,7 +3234,7 @@ impl Renderer {
             layout: Some(&entity_layout),
             vertex: wgpu::VertexState {
                 module: &entity_shader,
-                entry_point: Some("vs_entity"),
+                entry_point: Some(CELESTIAL_VERTEX_ENTRY),
                 compilation_options: Default::default(),
                 buffers: &entity_vertex,
             },

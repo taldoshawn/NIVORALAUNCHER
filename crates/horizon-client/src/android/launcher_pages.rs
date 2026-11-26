@@ -293,6 +293,9 @@ pub(super) enum Action {
     ToggleLocal(usize),
     LocalOptions(usize),
     CatalogSources,
+    BrowseModrinth,
+    MultiplayerHelp,
+    ServerAddress,
     DeleteLocal(usize),
     ConfirmDeleteLocal,
     ConfirmExit,
@@ -1582,7 +1585,7 @@ impl Launcher {
                 );
             }
 
-            let bundled: Vec<_> = if page == Page::Mods {
+            let bundled: Vec<_> = if page == Page::Mods && self.catalog.config.mod_source == crate::shader_catalog::Origin::Horizon {
                 let query = self.catalog.query.trim().to_lowercase();
                 horizon_client::mod_list::ANDROID_BUNDLED
                     .into_iter()
@@ -1609,7 +1612,7 @@ impl Launcher {
                             .any(|(id, _, _)| *id == p.id))
                 })
                 .collect();
-            let is_horizon_paged = page == Page::Mods
+            let is_horizon_paged = (page == Page::Mods && self.catalog.config.mod_source == crate::shader_catalog::Origin::Horizon)
                 || (page == Page::Shaders
                     && self.catalog.config.shader_source == crate::shader_catalog::Origin::Horizon);
             let total_horizon_items = bundled.len() + catalog_rows.len();
@@ -6962,6 +6965,27 @@ impl Launcher {
                 self.catalog.editing = None;
                 self.chooser = Some(super::chooser::Chooser::catalog_sources(self.catalog.page));
             }
+            Some(Action::BrowseModrinth) => {
+                self.catalog.page = Page::Mods;
+                self.catalog.config.mod_source = crate::shader_catalog::Origin::Modrinth;
+                self.catalog.config.save(&self.home)?;
+                self.catalog.query.clear();
+                self.catalog.offset = 0;
+                self.catalog.scroll = 0.0;
+                self.catalog.browse(&self.home);
+            }
+            Some(Action::MultiplayerHelp) => {
+                crate::platform::hide();
+                self.chooser = Some(super::chooser::Chooser::multiplayer());
+            }
+            Some(Action::ServerAddress) => {
+                self.chooser = None;
+                self.catalog.page = Page::Settings;
+                self.catalog.settings_category = SettingsCategory::Launcher;
+                self.catalog.scroll = 0.0;
+                self.catalog.editing = Some("server");
+                crate::platform::show(&self.catalog.config.server);
+            }
             Some(Action::LocalOptions(i)) => {
                 crate::platform::hide();
                 self.catalog.editing = None;
@@ -7022,6 +7046,7 @@ impl Launcher {
                 self.login.visible = true;
             }
             Some(Action::OfflineAccount | Action::MicrosoftAccount) => {
+                self.chooser = None;
                 self.login.providers = false;
                 self.login.offline = matches!(action, Some(Action::OfflineAccount));
                 self.login.ely = false;
@@ -7234,7 +7259,7 @@ impl Launcher {
             }
             Some(Action::Install(i)) => self.catalog.install(&self.home, i),
             Some(Action::Next) => {
-                let is_horizon_paged = self.catalog.page == Page::Mods
+                let is_horizon_paged = (self.catalog.page == Page::Mods && self.catalog.config.mod_source == crate::shader_catalog::Origin::Horizon)
                     || (self.catalog.page == Page::Shaders
                         && self.catalog.config.shader_source
                             == crate::shader_catalog::Origin::Horizon);
@@ -7280,7 +7305,7 @@ impl Launcher {
                 if self.catalog.offset >= crate::catalog::CATALOG_PAGE_SIZE {
                     self.catalog.offset -= crate::catalog::CATALOG_PAGE_SIZE;
                     self.catalog.scroll = 0.0;
-                    let is_horizon_paged = self.catalog.page == Page::Mods
+                    let is_horizon_paged = (self.catalog.page == Page::Mods && self.catalog.config.mod_source == crate::shader_catalog::Origin::Horizon)
                         || (self.catalog.page == Page::Shaders
                             && self.catalog.config.shader_source
                                 == crate::shader_catalog::Origin::Horizon);

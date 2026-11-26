@@ -496,6 +496,35 @@ impl Chooser {
 }
 
 impl Chooser {
+    pub(super) fn multiplayer() -> Self {
+        Self {
+            title: "Multiplayer e rede local",
+            help: "LAN: mesmo Wi-Fi, nomes diferentes. No mundo do host, abra para LAN e use IP:porta.",
+            device: None,
+            choices: vec![
+                (
+                    "Escolher perfil local".into(),
+                    "Jogar em LAN ou servidor offline".into(),
+                    Action::OfflineAccount,
+                    false,
+                ),
+                (
+                    "Endereço do servidor".into(),
+                    "Salvar IP:porta para entrar ao jogar".into(),
+                    Action::ServerAddress,
+                    false,
+                ),
+                (
+                    "Abrir o jogo".into(),
+                    "Multiplayer no menu do jogo; servidores autenticados exigem conta Java".into(),
+                    Action::Play,
+                    false,
+                ),
+            ],
+            scroll: 0.0,
+        }
+    }
+
     pub(super) fn catalog_sources(page: crate::catalog::Page) -> Self {
         use crate::{catalog::Page, shader_catalog::Origin};
         let kind=match page {Page::Mods=>horizon_client::content_files::Kind::Mods,Page::Shaders=>horizon_client::content_files::Kind::Shaders,_=>horizon_client::content_files::Kind::Packs};

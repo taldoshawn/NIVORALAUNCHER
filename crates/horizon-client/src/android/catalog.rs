@@ -242,7 +242,6 @@ impl Config {
             config.name = name;
         }
         config.name = truncate_player_name(&config.name);
-        config.mod_source = crate::shader_catalog::Origin::Horizon;
         if !config.reference_ui_v1 {
             if config.theme.preset == horizon_client::ui_theme::ThemePreset::EmeraldForest {
                 config.theme.apply_preset(horizon_client::ui_theme::ThemePreset::ObsidianViolet);
@@ -1986,7 +1985,7 @@ impl Catalog {
         let source = match self.page {
             Page::Packs => browser::SourceId::Modrinth,
             Page::Shaders => self.config.shader_source.source(),
-            Page::Mods => browser::SourceId::Horizon,
+            Page::Mods => self.config.mod_source.source(),
             _ => browser::SourceId::Horizon,
         };
         let query_offset = if source == browser::SourceId::Horizon {
@@ -2018,7 +2017,9 @@ impl Catalog {
                 "{} Horizon Native Shaders (.hshader) — tap Install to activate",
                 items.len()
             )
-        } else if self.page == Page::Mods {
+        } else if self.page == Page::Mods
+            && self.config.mod_source == crate::shader_catalog::Origin::Horizon
+        {
             let bundled_matches = horizon_client::mod_list::ANDROID_BUNDLED
                 .iter()
                 .filter(|(id, title, _)| {
@@ -3114,13 +3115,18 @@ pub fn install_modrinth_jar_with_port_pack(
     let mut skipped_vec = Vec::new();
     let mut namespaces_vec = vec![final_id.clone()];
 
-    if let Ok(transpiled) =
-        horizon_client::jar_transpiler::transpile_jar_to_horizon_mods_with_progress(
-            &target,
-            home,
-            progress,
-        )
     {
+        let transpiled =
+            horizon_client::jar_transpiler::transpile_jar_to_horizon_mods_with_progress(
+                &target, home, progress,
+            )
+            .map_err(|error| {
+                let _ = std::fs::remove_file(&target);
+                format!("Não foi possível adaptar {} para o motor nativo: {error}", project.title)
+            })?;
+        if !transpiled.hnmod_path.is_file() {
+            return Err(format!("{} não gerou um mod nativo instalável.", project.title));
+        }
         final_id = transpiled.id.clone();
         relative_final = format!("horizon-native-mods/{final_id}.hnmod");
         if let Some(pp) = transpiled.port_pack {
@@ -3149,8 +3155,6 @@ pub fn install_modrinth_jar_with_port_pack(
         on.disabled.remove(&slug);
         on.enabled.insert(final_id.clone());
         on.save(home);
-    } else {
-        browser::java::set_enabled(home, &slug, true)?;
     }
 
     let (algo, hash) = file.checksum().unwrap_or(("SHA-1", ""));
