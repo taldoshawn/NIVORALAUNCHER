@@ -389,7 +389,7 @@ impl Launcher {
             .catalog
             .local
             .iter()
-            .filter(|item| item.kind == Kind::Shaders && item.enabled)
+            .filter(|item| item.kind == Kind::Shaders)
             .count();
         for (i, (title, detail, icon, action)) in [
             (
@@ -406,7 +406,7 @@ impl Launcher {
             ),
             (
                 "Luz e atmosfera",
-                format!("{shaders} shaders ativos • personalizar"),
+                format!("{shaders} instalados • personalizar"),
                 Icon::Monitor,
                 Action::Page(Page::Shaders),
             ),

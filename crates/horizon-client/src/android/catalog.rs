@@ -3118,7 +3118,9 @@ pub fn install_modrinth_jar_with_port_pack(
     {
         let transpiled =
             horizon_client::jar_transpiler::transpile_jar_to_horizon_mods_with_progress(
-                &target, home, progress,
+                &target,
+                home,
+                progress,
             )
             .map_err(|error| {
                 let _ = std::fs::remove_file(&target);
