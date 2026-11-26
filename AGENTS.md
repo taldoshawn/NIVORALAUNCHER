@@ -4,6 +4,8 @@ This repository is taldoshawn/NIVORALAUNCHER. The upstream map below is retained
 Upstream issue-claim and release-train procedures apply only when contributing back to upstream, not to authorized work in this fork. Do not open issues or contact upstream maintainers automatically.
 Android APK builds are explicitly authorized by the repository owner. Use the existing Android preparation workflow to fetch verified build inputs into ignored `.local/` storage; never commit those inputs or include original game resources in public APKs. Only allowlisted generated engine tables may be packaged. Preserve account authentication and licenses.
 
+The owner chose native Rust-only support for historical versions (2026-11-26). Do not add a JVM game backend. Historical singleplayer support requires its own validated rules, registries, world generation and save compatibility; a protocol selector or modern world with an old version label is not a completed port.
+
 # Horizon: a map for agents
 
 Minecraft: Java Edition 26.3 rewritten in Rust (wgpu). Vanilla is the specification wherever it has the
