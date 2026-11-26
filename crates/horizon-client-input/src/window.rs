@@ -707,6 +707,71 @@ mod tests {
         assert_eq!(gui_scaled_size([1921, 1081], 4), [481, 271]);
     }
     #[test]
+    fn frame_caps_pace_active_frames_and_unlimited_still_throttles_menus() {
+        let active = FrameContext {
+            inactivity: InactivityFpsLimit::Minimized,
+            iconified: false,
+            focused: true,
+            exclusive_fullscreen: false,
+            now_ms: 1000,
+            latest_input_ms: 1000,
+            has_level: true,
+            has_screen: false,
+            has_overlay: false,
+        };
+        for cap in [30, 45, 60, 90, 120, 144, 165, 240, 260] {
+            let mut clock = Virtual {
+                now: 0,
+                oversleep: 0,
+            };
+            let mut limiter = FramerateLimiter::new(0);
+            for _ in 0..60 {
+                end_frame(&mut limiter, framerate_limit(cap, active), &mut clock);
+            }
+            if cap == 260 {
+                assert_eq!(clock.now, 0);
+            } else {
+                let expected = 60 * (1_000_000_000 / i64::from(cap));
+                assert!(
+                    clock.now.abs_diff(expected) < 100_000,
+                    "{cap}: {} vs {expected}",
+                    clock.now
+                );
+            }
+        }
+        let mut clock = Virtual {
+            now: 0,
+            oversleep: 0,
+        };
+        let mut limiter = FramerateLimiter::new(0);
+        end_frame(
+            &mut limiter,
+            framerate_limit(
+                260,
+                FrameContext {
+                    has_level: false,
+                    has_screen: true,
+                    ..active
+                },
+            ),
+            &mut clock,
+        );
+        assert!(clock.now >= 16_666_666);
+        end_frame(
+            &mut limiter,
+            framerate_limit(
+                260,
+                FrameContext {
+                    iconified: true,
+                    ..active
+                },
+            ),
+            &mut clock,
+        );
+        assert!(clock.now >= 100_000_000);
+    }
+
+    #[test]
     fn limiter_paces_frames_at_the_target() {
         let mut limiter = FramerateLimiter::new(0);
         let mut clock = Virtual {

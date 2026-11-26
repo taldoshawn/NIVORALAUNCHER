@@ -206,7 +206,9 @@ impl WorldRequest {
             level.seed,
             &level.enabled_features,
         )?;
-        streaming.radius = settings.render_distance;
+        streaming.radius = horizon_client::android_runtime::memory_budget::render_distance(
+            settings.render_distance,
+        );
         let mut world = World::new(res.facts().air, level.seed);
         world.shape = shape;
         world.fast_lava = dim == Dim::Nether;
@@ -809,7 +811,8 @@ pub(super) fn make_streaming(
         )
     };
     streaming.forced = save.load_forced_chunks();
-    streaming.radius = settings.render_distance;
+    streaming.radius =
+        horizon_client::android_runtime::memory_budget::render_distance(settings.render_distance);
     streaming.biome_blend = settings.biome_blend;
     streaming.smooth_lighting = settings.smooth_lighting;
     streaming.cutout_leaves = settings.cutout_leaves;

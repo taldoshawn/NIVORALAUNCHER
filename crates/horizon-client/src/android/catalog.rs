@@ -79,6 +79,10 @@ pub struct Config {
     pub record_performance: bool,
     pub worker_limit: u32,
     pub cache_budget_mib: u32,
+    #[serde(default)]
+    pub memory_target_mib: u32,
+    pub compact_atlas: bool,
+    pub memory_profile_initialized: bool,
     #[serde(flatten)]
     pub device: crate::device_preferences::Settings,
     pub shader_source: crate::shader_catalog::Origin,
@@ -89,7 +93,7 @@ pub struct Config {
     pub super_perf_mode: bool,
     #[serde(default)]
     pub battery_perf_mode: bool,
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub max_fps_mode: bool,
     #[serde(default = "default_true")]
     pub zero_latency_touch: bool,
@@ -139,13 +143,16 @@ impl Default for Config {
             record_performance: false,
             worker_limit: 0,
             cache_budget_mib: 0,
+            memory_target_mib: 0,
+            compact_atlas: false,
+            memory_profile_initialized: false,
             device: crate::device_preferences::Settings::default(),
             shader_source: crate::shader_catalog::Origin::default(),
             mod_source: crate::shader_catalog::Origin::Horizon,
             ui_scale_percent: 0,
             super_perf_mode: false,
             battery_perf_mode: false,
-            max_fps_mode: true,
+            max_fps_mode: false,
             zero_latency_touch: true,
             fast_chunk_upload: true,
             disable_launcher_animations: false,
@@ -222,15 +229,11 @@ impl Config {
             .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
             .unwrap_or_default();
         config.device.migrate_missing(&value, &legacy);
-        if !config.max_fps_unlocked_v3 {
-            config.max_fps_unlocked_v2 = true;
-            config.max_fps_unlocked_v3 = true;
-            config.max_fps_mode = true;
-            config.battery_perf_mode = false;
-            if config.device.display_hz < 120 {
-                config.device.display_hz = 120;
+        if !config.memory_profile_initialized {
+            config.memory_profile_initialized = true;
+            if horizon_client::android_runtime::memory_budget::low_memory_device() {
+                config.apply_low_memory_profile(home);
             }
-            config.apply_experimental_to_game(home);
             let _ = config.save(home);
         }
         let accounts = crate::account::Accounts::load_from(&home.join("accounts.json"));
@@ -320,6 +323,27 @@ impl Config {
             _ => "Auto (Phone DPI)",
         }
     }
+    /// One-shot, editable starting point for phones with 2 GiB of physical RAM.
+    pub fn apply_low_memory_profile(&mut self, home: &Path) {
+        self.worker_limit = 1;
+        self.cache_budget_mib = 16;
+        self.memory_target_mib = 768;
+        self.compact_atlas = true;
+        self.memory_profile_initialized = true;
+        self.render_scale = crate::display::RenderScale::new(50);
+        self.max_fps_mode = false;
+        self.super_perf_mode = false;
+        self.battery_perf_mode = false;
+        self.fast_chunk_upload = false;
+        self.device.display_hz = 60;
+        let game = self.game_home(home);
+        let _ = std::fs::create_dir_all(&game);
+        let path = game.join("options.txt");
+        let mut settings = horizon_client::settings::Settings::load(&path);
+        horizon_client::graphics::apply_low_memory_profile(&mut settings);
+        settings.save(&path);
+        self.apply_experimental_to_game(home);
+    }
     pub fn apply_experimental_to_game(&self, home: &Path) {
         let game = self.game_home(home);
         let _ = std::fs::create_dir_all(&game);
@@ -333,44 +357,12 @@ impl Config {
             settings.chunk_fade = 0.0;
             settings.view_bobbing = false;
             settings.menu_blur = 0;
-        } else if !self.super_perf_mode {
-            settings.horizon.animated_textures = true;
-            settings.chunk_fade = 1.0;
-            settings.view_bobbing = true;
         }
-        if self.super_perf_mode {
-            settings.render_distance = settings.render_distance.min(8);
-            settings.simulation_distance = settings.simulation_distance.min(6);
-            settings.menu_blur = 0;
-            settings.clouds = "false".into();
-            settings.particles = 2;
-            settings.entity_shadows = false;
-            settings.cutout_leaves = false;
-            settings.smooth_lighting = false;
-            settings.graphics_preset = "fast".into();
-            settings.horizon.upload_budget_kib = 1536;
-        }
+        // Presets are applied when selected. Launching must preserve custom
+        // frame caps, VSync, quality and distances saved by either options UI.
         settings.horizon.battery = self.battery_perf_mode;
-        if self.battery_perf_mode {
-            settings.render_distance = settings.render_distance.min(8);
-            settings.simulation_distance = settings.simulation_distance.min(5);
-            settings.max_fps = 60;
-            settings.vsync = true;
-            settings.menu_blur = 0;
-            settings.horizon.present_mode = horizon_client::graphics::PresentMode::Fifo;
-        } else if self.max_fps_mode || self.super_perf_mode {
-            settings.max_fps = 260;
-            settings.vsync = false;
-            settings.horizon.present_mode = horizon_client::graphics::PresentMode::Immediate;
-            settings.inactivity_fps_limit = "minimized".into();
-        } else if !settings.vsync || settings.max_fps >= 260 {
-            settings.horizon.present_mode = horizon_client::graphics::PresentMode::Immediate;
-            settings.inactivity_fps_limit = "minimized".into();
-        }
         if self.fast_chunk_upload {
             settings.horizon.upload_budget_kib = settings.horizon.upload_budget_kib.max(4096);
-        } else if !self.super_perf_mode {
-            settings.horizon.upload_budget_kib = 2048;
         }
         settings.horizon.cave_culling = true;
         settings.horizon.entity_culling = true;

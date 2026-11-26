@@ -717,9 +717,56 @@ pub fn apply_preset(preset: Preset, s: &mut crate::settings::Settings) {
     g.weather = true;
 }
 
+/// Mobile low-memory starting point; applied once so later user edits survive.
+pub fn apply_low_memory_profile(s: &mut crate::settings::Settings) {
+    apply_preset(Preset::Performance, s);
+    s.render_distance = 4;
+    s.simulation_distance = 5;
+    s.max_fps = 60;
+    s.vsync = false;
+    s.smooth_lighting = false;
+    s.menu_blur = 0;
+    s.horizon.present_mode = PresentMode::Immediate;
+    s.horizon.pacing = Pacing::Efficient;
+    s.horizon.battery = false;
+    s.horizon.lod_distance = 0;
+    s.horizon.resolution_scale = 50;
+    s.horizon.upload_budget_kib = 1024;
+    s.horizon.shader_pack.clear();
+    s.shader_packs.clear();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn low_memory_profile_removes_expensive_overrides_and_roundtrips() {
+        let mut s = crate::settings::Settings::default();
+        s.render_distance = 32;
+        s.simulation_distance = 32;
+        s.horizon.lod_distance = 1024;
+        s.horizon.shader_pack = "heavy.hshader".into();
+        apply_low_memory_profile(&mut s);
+        assert_eq!((s.render_distance, s.simulation_distance), (4, 5));
+        assert_eq!(s.horizon.lod_distance, 0);
+        assert!(s.horizon.shader_pack.is_empty());
+        assert_eq!(s.max_fps, 60);
+        assert_eq!(s.horizon.resolution_scale, 50);
+        let dir =
+            std::env::temp_dir().join(format!("nivora-memory-profile-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("options.txt");
+        s.save(&path);
+        let loaded = crate::settings::Settings::load(&path);
+        assert_eq!((loaded.render_distance, loaded.simulation_distance), (4, 5));
+        assert_eq!(loaded.horizon.lod_distance, 0);
+        assert!(loaded.horizon.shader_pack.is_empty());
+        assert_eq!(loaded.horizon.pacing, Pacing::Efficient);
+        assert_eq!(loaded.horizon.resolution_scale, 50);
+        assert_eq!(loaded.horizon.upload_budget_kib, 1024);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn the_api_choice_matches_the_system() {

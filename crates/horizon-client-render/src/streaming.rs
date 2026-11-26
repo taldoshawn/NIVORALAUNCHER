@@ -625,6 +625,10 @@ impl Streaming {
         context: Arc<WorkerContext>,
         threads: usize,
     ) -> Self {
+        // Apply the ceiling at pool creation too: the integrated-server path
+        // can otherwise raise a requested single worker back to two.
+        #[cfg(target_os = "android")]
+        let threads = crate::android_runtime::limit_workers(threads);
         let shared = Arc::new(Shared {
             queue: Mutex::new(BinaryHeap::new()),
             ready: Condvar::new(),

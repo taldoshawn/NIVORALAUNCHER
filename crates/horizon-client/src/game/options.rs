@@ -615,20 +615,7 @@ impl Game<'_> {
             has_screen: self.title.is_some() || self.screen != super::Screen::Playing,
             has_overlay: false,
         };
-        #[cfg(target_os = "android")]
-        let limit = if !self.settings.vsync || self.settings.max_fps >= 260 {
-            self.settings.max_fps.max(260) as i32
-        } else {
-            framerate_limit(self.settings.max_fps as i32, context)
-        };
-        #[cfg(not(target_os = "android"))]
         let limit = framerate_limit(self.settings.max_fps as i32, context);
-        #[cfg(target_os = "android")]
-        if (!self.settings.vsync || self.settings.max_fps >= 260)
-            && !self.settings.horizon.battery
-        {
-            return limit;
-        }
         self.settings
             .horizon
             .battery_limit(limit, self.title.is_none(), self.focused)
@@ -638,12 +625,6 @@ impl Game<'_> {
     /// frame's slot ends (not in scripted frame-count runs).
     pub(super) fn limit_frame(&mut self) {
         if self.options.frames.is_some() || self.options.paced_by_split {
-            return;
-        }
-        #[cfg(target_os = "android")]
-        if (!self.settings.vsync || self.settings.max_fps >= 260)
-            && !self.settings.horizon.battery
-        {
             return;
         }
         let limit = self.framerate_limit();

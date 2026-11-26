@@ -11,6 +11,8 @@ pub(super) enum Kind {
     Aspect,
     DisplayHz,
     CacheBudget,
+    MemoryTarget,
+    MaxFps,
     WorkerLimit,
     Renderer,
     RenderScale,
@@ -32,12 +34,9 @@ impl Launcher {
         crate::platform::hide();
         self.catalog.editing = None;
         let device = if matches!(kind, Kind::Renderer) {
-            self.renderer.as_ref().map(|r| {
-                format!(
-                    "GPU: {} · {}",
-                    r.info.name, r.info.driver
-                )
-            })
+            self.renderer
+                .as_ref()
+                .map(|r| format!("GPU: {} · {}", r.info.name, r.info.driver))
         } else {
             None
         };
@@ -47,8 +46,18 @@ impl Launcher {
                 "Selecionar versão",
                 "1.8.9: servidores multiplayer. Mundos locais usam 26.3. Outras versões ainda não estão implementadas.",
                 vec![
-                    ("26.3".into(), "Mundos locais e multiplayer 26.3".into(), Action::ChooseGameVersion(false), !c.legacy18),
-                    ("1.8.9".into(), "Multiplayer 1.8–1.8.9 • protocolo 47".into(), Action::ChooseGameVersion(true), c.legacy18),
+                    (
+                        "26.3".into(),
+                        "Mundos locais e multiplayer 26.3".into(),
+                        Action::ChooseGameVersion(false),
+                        !c.legacy18,
+                    ),
+                    (
+                        "1.8.9".into(),
+                        "Multiplayer 1.8–1.8.9 • protocolo 47".into(),
+                        Action::ChooseGameVersion(true),
+                        c.legacy18,
+                    ),
                 ],
             ),
             Kind::Aspect => (
@@ -71,10 +80,53 @@ impl Launcher {
                 })
                 .collect(),
             ),
+            Kind::MaxFps => {
+                let opts = horizon_client::settings::Settings::load(
+                    &c.game_home(&self.home).join("options.txt"),
+                );
+                (
+                    "Limite de FPS",
+                    "O limite funciona com VSync ligado ou desligado. Sem limite exige mais energia e pode aquecer o aparelho.",
+                    [30, 45, 60, 90, 120, 144, 165, 240, 260]
+                        .into_iter()
+                        .map(|fps| {
+                            (
+                                if fps == 260 {
+                                    "Sem limite".into()
+                                } else {
+                                    format!("{fps} FPS")
+                                },
+                                String::new(),
+                                Action::ChooseMaxFps(fps),
+                                opts.max_fps == fps,
+                            )
+                        })
+                        .collect(),
+                )
+            }
+            Kind::MemoryTarget => (
+                "Alvo de RAM do processo",
+                "Reduz a distância de visão sob pressão de RAM, com recuperação gradual. Não é um teto rígido: mundo, simulação, mods e GPU podem exceder o alvo. Aplica ao jogar.",
+                [0, 512, 768, 1024, 1536, 2048, 3072, 4096, 6144, 8192]
+                    .into_iter()
+                    .map(|mib| {
+                        (
+                            if mib == 0 {
+                                "Desativado".into()
+                            } else {
+                                format!("{mib} MiB")
+                            },
+                            String::new(),
+                            Action::ChooseMemoryTarget(mib),
+                            c.memory_target_mib == mib,
+                        )
+                    })
+                    .collect(),
+            ),
             Kind::CacheBudget => (
-                "Reusable RAM cache",
-                "Decoded sounds (80%) and empty mesh buffers (20%). Recreated at the same quality. Smaller budgets can increase CPU work. Not total RAM/VRAM. Applies on next Play.",
-                [0, 16, 32, 64, 128, 256]
+                "Limite dos caches de RAM",
+                "Sons decodificados (80%) e buffers de malha vazios (20%). Limite destes caches, não da RAM total ou GPU. Valores baixos podem aumentar trabalho da CPU. Aplica ao jogar.",
+                [0, 16, 32, 64, 128, 256, 512, 1024]
                     .into_iter()
                     .map(|mib| {
                         (

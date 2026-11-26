@@ -80,11 +80,7 @@ pub fn frame(enabled: bool, hz: u16, active: bool) -> Frame {
         crate::APP.with(|app| {
             if let Some(w) = app.borrow().as_ref().and_then(|a| a.native_window()) {
                 let ptr = w.ptr().as_ptr() as usize;
-                let requested = if active {
-                    if hz == 0 { 120 } else { hz }
-                } else {
-                    0
-                };
+                let requested = if active { hz } else { 0 };
                 if r.window != ptr || r.hz != requested {
                     unsafe {
                         let p = r.symbol(c"ANativeWindow_setFrameRate");

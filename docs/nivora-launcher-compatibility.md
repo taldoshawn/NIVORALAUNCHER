@@ -40,8 +40,9 @@ o multiplayer ainda precisa de conectividade entre os aparelhos.
 | 1.8.9 singleplayer | Não implementado; não abre mundos antigos no motor moderno |
 | 1.7.10, 1.12.2, 1.20.1 | Clientes/motores e protocolos ainda não implementados |
 
-Executar essas versões de fato exige um backend para cada versão (ou uma
-integração de runtime Java compatível com Android), além de instalação de
+A escolha do projeto é manter somente Rust. Executar essas versões de fato
+exige portar as regras, os registros, a geração de mundo e os saves de cada
+versão para o motor nativo, além de instalação de
 recursos, isolamento de mundos e validação de controles e renderização. Esta
 alteração não adiciona entradas de versão que iniciariam outro jogo.
 
@@ -55,3 +56,49 @@ python3 tools/check_public_tree.py
 
 O teste celestial precisa de um adaptador Vulkan, que pode ser Mesa lavapipe.
 Não inicia o jogo nem acessa dados de jogadores.
+
+## Desempenho e memória
+
+Em Configurações → Vídeo, o seletor oferece 30, 45, 60, 90, 120, 144, 165,
+240 FPS e Sem limite. Internamente 260 é o sentinela de **sem limite**, não
+uma promessa de alcançar 260 FPS. VSync desligado mantém os limites escolhidos.
+O jogo volta a reduzir FPS em menus, ao minimizar e quando o modo bateria exige.
+O launcher permanece com VSync e espera entre frames mesmo em modo alto FPS,
+evitando consumir CPU continuamente antes de entrar no mundo.
+
+Os presets agora são aplicados quando selecionados. Iniciar o jogo não volta a
+sobrescrever FPS, VSync, qualidade e distâncias personalizadas. A opção Auto da
+tela deixa o Android escolher a frequência em vez de solicitar sempre 120 Hz.
+
+Em Configurações → Launcher:
+
+- **Alvo de RAM do processo**: opcional, 512–8192 MiB. Mede VmRSS do processo
+  a cada dois segundos. A partir de 90% do alvo reduz dois chunks de visão por
+  amostra até o mínimo de dois. Abaixo de 75%, recupera um chunk a cada cinco
+  amostras consecutivas. Informa o servidor da nova distância; preserva as
+  distâncias salvas e a simulação. Não é limite rígido nem cobre memória da GPU.
+  Mundos, simulação e mods podem manter o processo acima do alvo mínimo.
+- **Limite do cache de memória**: 16–1024 MiB, aplicado aos caches descartáveis
+  de sons e buffers de malha vazios. Não limita todas as alocações do processo.
+- **Chunk worker thread ceiling** limita os workers de geração/malha, sem
+  forçar o Android a criar mais workers que o modo automático considera adequado.
+
+Não há heap Java ou parâmetro -Xmx. Não foram medidos ganhos de FPS em celular.
+O relatório local inclui alvo de RAM, última leitura RSS e visão efetiva para
+permitir comparar sessões no aparelho.
+
+### Perfil para aparelhos de 2 GB
+
+Na primeira abertura desta atualização, aparelhos com MemTotal de até 2304 MiB
+recebem um ponto de partida leve: visão 4, simulação 5, escala 50%, 60 FPS,
+cache 16 MiB, um worker, alvo de RSS 768 MiB, LOD e shaders desligados.
+O atlas de interface é limitado a 4096 px, usando o redimensionamento móvel
+existente para texturas não essenciais. A resolução do terreno não é alterada
+por esse atlas. O launcher também respeita um prazo entre redraws.
+
+O botão **Aplicar perfil leve** em Configurações → Launcher reaplica o perfil.
+O atlas precisa de nova abertura do app; as outras opções aplicam ao jogar.
+A detecção usa RAM física, não memória disponível momentânea, e ocorre somente
+uma vez: escolhas posteriores são preservadas. Mods e shaders continuam
+selecionáveis, mas podem exceder a capacidade desses aparelhos. O alvo de
+768 MiB não garante sobrevivência ao gerenciador de memória do Android.

@@ -1412,6 +1412,8 @@ impl Game<'_> {
         serde_json::json!({"renderer":renderer,"android_native":crate::device_runtime::diagnostics(),"android_power":crate::platform::performance_power(),
             "menu_blur_radius":self.menu_blur(),"shader_pack_active":!self.settings.horizon.shader_pack.is_empty(),
             "render_distance":self.settings.render_distance,
+            "effective_render_distance":self.streaming.radius,
+            "memory_target":horizon_client::android_runtime::memory_budget::snapshot(),
             "simulation_distance":self.settings.simulation_distance,"fps_limit":self.framerate_limit(),
             "focused":self.focused,"paused":self.pause,"in_world":self.player.is_some(),
             "playing_screen":self.screen == Screen::Playing,

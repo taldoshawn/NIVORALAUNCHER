@@ -792,9 +792,9 @@ impl Game<'_> {
         let lang = Arc::new(horizon_client::net::load_language(&root));
         // Options.createInformation: what the server learns about this player,
         // sent again when one of those options changes.
-        let info = self
-            .settings
-            .client_information(client_view_distance(self.settings.render_distance));
+        let info = self.settings.client_information(client_view_distance(
+            horizon_client::android_runtime::memory_budget::render_distance(self.settings.render_distance),
+        ));
         if local.is_none() && !self.options.split_guest {
             horizon_client::crash::set_detail(
                 "Server",
@@ -2984,9 +2984,9 @@ impl Game<'_> {
                     false,
                     horizon_client::level_loading::Reason::Other,
                 );
-                let info = self
-                    .settings
-                    .client_information(client_view_distance(self.settings.render_distance));
+                let info = self.settings.client_information(client_view_distance(
+                    horizon_client::android_runtime::memory_budget::render_distance(self.settings.render_distance),
+                ));
                 if let Some(r) = self.remote.as_mut() {
                     r.sent_info = info.clone();
                 }
@@ -5527,9 +5527,9 @@ impl Game<'_> {
         self.tick_bundle_hover();
         // Options.broadcastOptions: a changed render distance or Chat option
         // is sent again.
-        let info = self
-            .settings
-            .client_information(client_view_distance(self.settings.render_distance));
+        let info = self.settings.client_information(client_view_distance(
+            horizon_client::android_runtime::memory_budget::render_distance(self.settings.render_distance),
+        ));
         if let Some(r) = self.remote.as_mut()
             && r.joined
             && r.sent_info != info
