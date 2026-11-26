@@ -7177,7 +7177,10 @@ impl Launcher {
                 self.catalog.offset = 0;
                 self.catalog.browse(&self.home);
             }
-            Some(Action::Play) => self.action(events)?,
+            Some(Action::Play) => {
+                self.chooser = None;
+                self.action(events)?;
+            }
             Some(Action::WardrobeKind(cape)) => {
                 self.wardrobe.set_tab(cape);
                 self.catalog.scroll = 0.0;
