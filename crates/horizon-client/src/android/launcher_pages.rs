@@ -4901,7 +4901,7 @@ impl Launcher {
                     ),
                     (
                         "Perfil para celular com 2 GB",
-                        "Aplica visão de 4 chunks, escala 50%, 60 FPS e desativa shaders; tudo editável",
+                        "Aplica visão de 4 chunks, escala 50%, FPS sem limite e desativa shaders; tudo editável",
                         SettingControl::Button("Aplicar perfil leve", Action::LowMemoryProfile, false),
                     ),
                     (
@@ -6053,7 +6053,7 @@ impl Launcher {
                 } else if c.battery_perf_mode {
                     "Battery Saver Active"
                 } else if c.max_fps_mode {
-                    "260 FPS Uncapped"
+                    "FPS sem limite"
                 } else {
                     "Balanced Default"
                 };
@@ -6075,8 +6075,8 @@ impl Launcher {
                         SettingControl::Toggle(c.battery_perf_mode, Action::ToggleBatteryPerf),
                     ),
                     (
-                        "Max FPS Mode (Uncapped 260 FPS)",
-                        "Disables VSync, unlocks framerate ceiling and requests maximum display Hz",
+                        "FPS sem limite",
+                        "Desativa o limite de FPS do jogo e o VSync",
                         SettingControl::Toggle(c.max_fps_mode, Action::ToggleMaxFpsMode),
                     ),
                     (
@@ -6417,8 +6417,7 @@ impl Launcher {
                     s.max_fps = fps;
                     s.horizon.battery = false;
                     if fps >= 260 {
-                        s.vsync = false;
-                        s.horizon.present_mode = horizon_client::graphics::PresentMode::Immediate;
+                        horizon_client::graphics::apply_uncapped_profile(s);
                     }
                 });
                 self.chooser = None;
@@ -6529,9 +6528,7 @@ impl Launcher {
                         self.catalog.config.device.display_hz = 120;
                     }
                     self.modify_game_settings(|s| {
-                        s.max_fps = 260;
-                        s.vsync = false;
-                        s.horizon.present_mode = horizon_client::graphics::PresentMode::Immediate;
+                        horizon_client::graphics::apply_uncapped_profile(s);
                     });
                 } else {
                     if self.catalog.config.device.display_hz == 120 {
@@ -6923,7 +6920,7 @@ impl Launcher {
                 self.catalog.config.save(&self.home)?;
                 crate::device_runtime::configure(self.catalog.config.device);
                 crate::display::set_scale(self.catalog.config.render_scale);
-                self.catalog.status = "Perfil de 2 GB aplicado: visão 4, simulação 5, cache 16 MiB, um worker, alvo 768 MiB, escala 50%, 60 FPS. Reabra o app para reduzir o atlas. Você pode ajustar tudo depois.".into();
+                self.catalog.status = "Perfil de 2 GB aplicado: visão 4, simulação 5, cache 16 MiB, um worker, alvo 768 MiB, escala 50%, FPS sem limite. Reabra o app para reduzir o atlas. Você pode ajustar tudo depois.".into();
             }
             Some(Action::ToggleCompactAtlas) => {
                 self.catalog.config.compact_atlas ^= true;
@@ -7474,6 +7471,7 @@ impl Launcher {
                         .join(format!("profile-{profile}"))
                 })?;
                 self.catalog.config.profile = profile;
+                self.catalog.config.ensure_uncapped_profile(&self.home);
                 super::ensure_fps_counter(&self.catalog.config.game_home(&self.home))?;
                 self.catalog.config.save(&self.home)?;
                 self.catalog.refresh(&self.home);

@@ -717,13 +717,22 @@ pub fn apply_preset(preset: Preset, s: &mut crate::settings::Settings) {
     g.weather = true;
 }
 
+/// Disable the software frame ceiling independently of memory/quality settings.
+/// 260 is the engine's unlimited sentinel, not a numeric FPS cap.
+pub fn apply_uncapped_profile(s: &mut crate::settings::Settings) {
+    s.max_fps = 260;
+    s.vsync = false;
+    s.horizon.present_mode = PresentMode::Immediate;
+    s.horizon.battery = false;
+    s.inactivity_fps_limit = "minimized".into();
+}
+
 /// Mobile low-memory starting point; applied once so later user edits survive.
 pub fn apply_low_memory_profile(s: &mut crate::settings::Settings) {
     apply_preset(Preset::Performance, s);
     s.render_distance = 4;
     s.simulation_distance = 5;
-    s.max_fps = 60;
-    s.vsync = false;
+    apply_uncapped_profile(s);
     s.smooth_lighting = false;
     s.menu_blur = 0;
     s.horizon.present_mode = PresentMode::Immediate;
@@ -759,7 +768,7 @@ mod tests {
         assert_eq!((s.render_distance, s.simulation_distance), (4, 5));
         assert_eq!(s.horizon.lod_distance, 0);
         assert!(s.horizon.shader_pack.is_empty());
-        assert_eq!(s.max_fps, 60);
+        assert_eq!(s.max_fps, 260);
         assert_eq!(s.horizon.resolution_scale, 50);
         let dir =
             std::env::temp_dir().join(format!("nivora-memory-profile-{}", std::process::id()));
@@ -773,6 +782,11 @@ mod tests {
         assert_eq!(loaded.horizon.pacing, Pacing::Efficient);
         assert_eq!(loaded.horizon.resolution_scale, 50);
         assert_eq!(loaded.horizon.upload_budget_kib, 1024);
+        assert_eq!(loaded.max_fps, 260);
+        assert!(!loaded.vsync);
+        assert!(!loaded.horizon.battery);
+        assert_eq!(loaded.horizon.present_mode, PresentMode::Immediate);
+        assert_eq!(loaded.inactivity_fps_limit, "minimized");
         assert_eq!(loaded.horizon.texture_budget_mib, 16);
         assert!(!loaded.horizon.taa);
         assert!(!loaded.horizon.hdr);

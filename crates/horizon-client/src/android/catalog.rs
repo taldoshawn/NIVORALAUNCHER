@@ -83,6 +83,7 @@ pub struct Config {
     pub memory_target_mib: u32,
     pub compact_atlas: bool,
     pub memory_profile_initialized: bool,
+    pub uncapped_profile_ids_v1: Vec<u32>,
     #[serde(flatten)]
     pub device: crate::device_preferences::Settings,
     pub shader_source: crate::shader_catalog::Origin,
@@ -93,7 +94,7 @@ pub struct Config {
     pub super_perf_mode: bool,
     #[serde(default)]
     pub battery_perf_mode: bool,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub max_fps_mode: bool,
     #[serde(default = "default_true")]
     pub zero_latency_touch: bool,
@@ -146,13 +147,14 @@ impl Default for Config {
             memory_target_mib: 0,
             compact_atlas: false,
             memory_profile_initialized: false,
+            uncapped_profile_ids_v1: Vec::new(),
             device: crate::device_preferences::Settings::default(),
             shader_source: crate::shader_catalog::Origin::default(),
             mod_source: crate::shader_catalog::Origin::Horizon,
             ui_scale_percent: 0,
             super_perf_mode: false,
             battery_perf_mode: false,
-            max_fps_mode: false,
+            max_fps_mode: true,
             zero_latency_touch: true,
             fast_chunk_upload: true,
             disable_launcher_animations: false,
@@ -236,6 +238,7 @@ impl Config {
             }
             let _ = config.save(home);
         }
+        config.ensure_uncapped_profile(home);
         let accounts = crate::account::Accounts::load_from(&home.join("accounts.json"));
         if accounts.selected().is_none()
             && let Some(name) = accounts.offline_selected
@@ -323,6 +326,22 @@ impl Config {
             _ => "Auto (Phone DPI)",
         }
     }
+    /// Migrate each profile once; later manual FPS/VSync edits stay in effect.
+    pub fn ensure_uncapped_profile(&mut self, home: &Path) {
+        if self.uncapped_profile_ids_v1.contains(&self.profile) {
+            return;
+        }
+        let game = self.game_home(home);
+        let _ = std::fs::create_dir_all(&game);
+        let path = game.join("options.txt");
+        let mut settings = horizon_client::settings::Settings::load(&path);
+        horizon_client::graphics::apply_uncapped_profile(&mut settings);
+        settings.save(&path);
+        self.max_fps_mode = true;
+        self.battery_perf_mode = false;
+        self.uncapped_profile_ids_v1.push(self.profile);
+        let _ = self.save(home);
+    }
     /// One-shot, editable starting point for phones with 2 GiB of physical RAM.
     pub fn apply_low_memory_profile(&mut self, home: &Path) {
         self.worker_limit = 1;
@@ -331,11 +350,11 @@ impl Config {
         self.compact_atlas = true;
         self.memory_profile_initialized = true;
         self.render_scale = crate::display::RenderScale::new(50);
-        self.max_fps_mode = false;
+        self.max_fps_mode = true;
         self.super_perf_mode = false;
         self.battery_perf_mode = false;
         self.fast_chunk_upload = false;
-        self.device.display_hz = 60;
+        self.device.display_hz = 0;
         let game = self.game_home(home);
         let _ = std::fs::create_dir_all(&game);
         let path = game.join("options.txt");

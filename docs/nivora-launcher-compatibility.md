@@ -90,7 +90,7 @@ permitir comparar sessões no aparelho.
 ### Perfil para aparelhos de 2 GB
 
 Na primeira abertura desta atualização, aparelhos com MemTotal de até 2304 MiB
-recebem um ponto de partida leve: visão 4, simulação 5, escala 50%, 60 FPS,
+recebem um ponto de partida leve: visão 4, simulação 5, escala 50%, FPS sem limite,
 cache 16 MiB, um worker, alvo de RSS 768 MiB, LOD e shaders desligados.
 HDR e antialiasing temporal ficam desligados, e as texturas de blocos usam
 orçamento de 16 MiB no nível principal (mipmaps e o mínimo de 16 px ficam fora
@@ -104,3 +104,12 @@ A detecção usa RAM física, não memória disponível momentânea, e ocorre so
 uma vez: escolhas posteriores são preservadas. Mods e shaders continuam
 selecionáveis, mas podem exceder a capacidade desses aparelhos. O alvo de
 768 MiB não garante sobrevivência ao gerenciador de memória do Android.
+
+### FPS sem limite por padrão
+
+O perfil leve também usa **Sem limite**, com VSync e modo bateria desligados.
+260 é somente o sentinela interno: o limitador não espera o prazo de 260 FPS.
+Os perfis existentes recebem essa configuração uma vez nesta atualização,
+inclusive ao trocar de perfil. Depois, escolhas manuais de FPS/VSync são
+preservadas. A redução de FPS em menus/minimização continua independente; a
+frequência física da tela e as capacidades do driver não são garantias de FPS.
