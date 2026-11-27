@@ -205,22 +205,44 @@ fn valid_pose(p: &[f64; 5]) -> bool {
         && p[4].abs() <= 90.0
 }
 
-fn read_pose(dir: &Path) -> Result<[f64; 5]> {
-    match fs::read(dir.join("player.json")) {
-        Ok(bytes) => serde_json::from_slice::<[f64; 5]>(&bytes)
-            .ok()
-            .filter(valid_pose)
-            .ok_or_else(|| Error::new("Invalid saved classic-flat player position")),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok([0.5, 4.0, 0.5, 0., 0.]),
-        Err(e) => Err(e.into()),
-    }
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PlayerSave {
+    version: u8,
+    pose: [f64; 5],
+    held: u8,
 }
 
-fn save_pose(dir: &Path, pose: &[f64; 5]) -> Result<()> {
+fn read_player(dir: &Path) -> Result<PlayerSave> {
+    let default = PlayerSave {
+        version: 1,
+        pose: [0.5, 4.0, 0.5, 0., 0.],
+        held: 0,
+    };
+    let bytes = match fs::read(dir.join("player.json")) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(default),
+        Err(e) => return Err(e.into()),
+    };
+    // Existing worlds stored just the position array.
+    let player = serde_json::from_slice::<PlayerSave>(&bytes)
+        .or_else(|_| {
+            serde_json::from_slice::<[f64; 5]>(&bytes).map(|pose| PlayerSave { pose, ..default })
+        })
+        .map_err(|_| Error::new("Invalid saved classic-flat player state"))?;
+    if player.version != 1 || !valid_pose(&player.pose) || player.held >= 9 {
+        return Err(Error::new(
+            "Invalid or unsupported classic-flat player state",
+        ));
+    }
+    Ok(player)
+}
+
+fn save_player(dir: &Path, player: &PlayerSave) -> Result<()> {
     use std::io::Write;
     let tmp = dir.join("player.json.tmp");
     let mut f = fs::File::create(&tmp)?;
-    serde_json::to_writer(&mut f, pose).map_err(|e| Error::new(e.to_string()))?;
+    serde_json::to_writer(&mut f, player).map_err(|e| Error::new(e.to_string()))?;
     f.flush()?;
     f.sync_all()?;
     drop(f);
@@ -277,8 +299,9 @@ fn play(conn: &mut Connection, dir: &Path) -> Result<()> {
     w.i64(0);
     w.i64(6000);
     conn.send(&w.data)?;
-    let mut pose = read_pose(dir)?;
-    let mut saved_pose = pose;
+    let mut player = read_player(dir)?;
+    let mut saved_player = player;
+    let mut pose = player.pose;
     teleport(conn, pose)?;
     for (i, id) in HOTBAR.iter().enumerate() {
         let mut w = packet(0x2f);
@@ -290,7 +313,10 @@ fn play(conn: &mut Connection, dir: &Path) -> Result<()> {
         w.u8(0);
         conn.send(&w.data)?;
     }
-    let mut held = 0usize;
+    let mut held = usize::from(player.held);
+    let mut w = packet(9);
+    w.u8(player.held);
+    conn.send(&w.data)?;
     let mut center = BlockPos::new(pose[0].floor() as i32, 0, pose[2].floor() as i32).chunk();
     let mut loaded = HashSet::new();
     let mut radius = 2;
@@ -369,10 +395,12 @@ fn play(conn: &mut Connection, dir: &Path) -> Result<()> {
                 }
                 _ => {}
             }
+            player.pose = pose;
+            player.held = held as u8;
             if keep_alive.elapsed().as_secs() >= 10 {
-                if saved_pose != pose {
-                    save_pose(dir, &pose)?;
-                    saved_pose = pose;
+                if saved_player != player {
+                    save_player(dir, &player)?;
+                    saved_player = player;
                 }
                 let mut w = packet(0);
                 w.varint(1);
@@ -381,8 +409,10 @@ fn play(conn: &mut Connection, dir: &Path) -> Result<()> {
             }
         }
     })();
-    if saved_pose != pose {
-        save_pose(dir, &pose)?;
+    player.pose = pose;
+    player.held = held as u8;
+    if saved_player != player {
+        save_player(dir, &player)?;
     }
     session
 }
@@ -392,6 +422,35 @@ mod tests {
     use super::*;
     use crate::legacy18::{chunk::Column, login, play::Packet};
     use std::time::Duration;
+
+    #[test]
+    fn old_player_positions_migrate_and_invalid_saves_are_preserved() {
+        let mut suffix = [0; 8];
+        getrandom::fill(&mut suffix).unwrap();
+        let dir =
+            std::env::temp_dir().join(format!("nivora-player-{}", u64::from_le_bytes(suffix)));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("player.json");
+        fs::write(&path, b"[12.5,4,-20.5,180,45]").unwrap();
+        let mut player = read_player(&dir).unwrap();
+        assert_eq!(player.pose, [12.5, 4., -20.5, 180., 45.]);
+        assert_eq!(player.held, 0);
+        player.held = 8;
+        save_player(&dir, &player).unwrap();
+        assert_eq!(read_player(&dir).unwrap().held, 8);
+        assert_eq!(read_player(&dir).unwrap().pose, player.pose);
+        for invalid in [
+            r#"{"version":2,"pose":[0,4,0,0,0],"held":0}"#,
+            r#"{"version":1,"pose":[0,4,0,0,0],"held":9}"#,
+            "[0,4,0,0,91]",
+            "[0,4",
+        ] {
+            fs::write(&path, invalid).unwrap();
+            assert!(read_player(&dir).is_err());
+            assert_eq!(fs::read_to_string(&path).unwrap(), invalid);
+        }
+        fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn damaged_region_is_not_treated_as_empty_or_modified() {
@@ -470,6 +529,9 @@ mod tests {
                 columns += 1;
             }
         }
+        let mut select = packet(9);
+        select.i16(2);
+        c.send(&select.data).unwrap();
         let mut pos = packet(4);
         pos.f64(16.5);
         pos.f64(4.0);
@@ -491,7 +553,7 @@ mod tests {
                         x: 16,
                         y: 4,
                         z: 0,
-                        state: 16
+                        state: 64
                     }
                 );
                 break;
@@ -513,8 +575,13 @@ mod tests {
         drop(lock);
         let mut c = connect();
         let mut restored = false;
+        let mut restored_slot = false;
         loop {
             let (id, b) = c.recv().unwrap();
+            if id == 9 {
+                assert_eq!(Packet::decode(id, &b).unwrap(), Packet::HeldSlot(2));
+                restored_slot = true;
+            }
             if id == 8 {
                 let mut r = Reader::new(&b);
                 assert_eq!(r.f64().unwrap(), 16.5);
@@ -523,12 +590,13 @@ mod tests {
             if id == 0x21 {
                 let col = Column::decode(&b, true).unwrap();
                 if (col.x, col.z) == (1, 0) {
-                    assert_eq!(col.section(0).unwrap().state(0, 4, 0), Some(16));
+                    assert_eq!(col.section(0).unwrap().state(0, 4, 0), Some(64));
                     break;
                 }
             }
         }
         assert!(restored);
+        assert!(restored_slot);
         drop(c);
         fs::remove_dir_all(dir).unwrap();
     }

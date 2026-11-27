@@ -37,7 +37,7 @@ o multiplayer ainda precisa de conectividade entre os aparelhos.
 | --- | --- |
 | 26.3 | Motor de mundos locais e multiplayer existente |
 | 1.8–1.8.9 | Transporte multiplayer de protocolo 47 experimental |
-| 1.8.9 singleplayer | Criativo plano experimental. Um mundo por perfil com nove blocos na barra, terreno plano e posição do jogador salva. Sobrevivência, criaturas e geração normal continuam pendentes. |
+| 1.8.9 singleplayer | Criativo plano experimental. Um mundo por perfil com nove blocos na barra, terreno plano, posição e slot selecionado salvos. Sobrevivência, criaturas e geração normal continuam pendentes. |
 | 1.7.10, 1.12.2, 1.20.1 | Clientes/motores e protocolos ainda não implementados |
 
 A escolha do projeto é manter somente Rust. Executar essas versões de fato
@@ -50,6 +50,11 @@ O criativo plano recusa regiões com cabeçalho truncado, alocações inválidas
 sobrepostas e chunks cujas coordenadas divergem do slot. A tentativa de edição
 preserva os bytes do arquivo nesses casos. Regiões novas são publicadas somente
 após concluir a escrita. Essa proteção não recupera arquivos já danificados.
+
+O estado do jogador usa um JSON versionado que mantém posição e slot selecionado
+na mesma gravação. Os arquivos antigos contendo somente a posição continuam
+aceitos, inicialmente com o primeiro slot selecionado. Versões desconhecidas ou
+valores inválidos interrompem a abertura sem substituir o save.
 
 ## Verificação direcionada
 
