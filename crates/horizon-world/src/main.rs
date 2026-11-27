@@ -120,7 +120,7 @@ fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
             }
         }
         "copy-region" if args.len() == 3 || args.len() == 4 => {
-            let mut region = RegionFile::open(&args[1])?;
+            let mut region = RegionFile::open_strict(&args[1], false)?;
             if args.len() == 3 {
                 region.export(&args[2], &[])?;
             } else {
@@ -167,7 +167,7 @@ fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
         }
         "edit-numeric-block" if args.len() == 8 => {
             let pos = BlockPos::new(args[3].parse()?, args[4].parse()?, args[5].parse()?);
-            let mut region = RegionFile::open(&args[1])?;
+            let mut region = RegionFile::open_strict(&args[1], false)?;
             let record = region.read(pos.chunk())?.ok_or("chunk is absent")?;
             let mut chunk = NumericChunk::new(record.nbt(Limits::default())?)?;
             chunk.set_block(pos, args[6].parse()?, args[7].parse()?)?;
@@ -208,7 +208,7 @@ fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
                     return Err("invalid or duplicate block property".into());
                 }
             }
-            let mut region = RegionFile::open(&args[1])?;
+            let mut region = RegionFile::open_strict(&args[1], false)?;
             let old = region.read(block.chunk())?.ok_or("chunk is absent")?;
             let mut chunk = palette_chunk(&old)?;
             chunk.set_block_data(

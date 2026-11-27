@@ -61,6 +61,16 @@ valores inválidos interrompem a abertura sem substituir o save.
 
 ## Verificação direcionada
 
+O teste de interoperabilidade cria mundos temporários com os servidores de
+referência 1.7.10, 1.8.9, 1.12.2 e 1.20.1. A ferramenta Rust edita um bloco
+numa cópia da região. O teste confere o bloco de um chunk vizinho e o SHA-256
+da origem, depois reabre a cópia no servidor da versão e consulta o bloco
+editado. O Java é usado pelo teste de referência no computador.
+
+```sh
+python3 tools/test_nivora_region_interop.py --java java
+```
+
 ```sh
 python3 tools/test_android_celestial.py
 python3 tools/test_android_launch.py

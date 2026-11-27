@@ -102,7 +102,7 @@ def server_jar(version):
 # DataVersion and protocol of servers whose jar has no version.json (before 1.14).
 OLD_VERSIONS = {
     '1.13.2': (1631, 404), '1.12.2': (1343, 340), '1.11.2': (922, 316), '1.10.2': (512, 210),
-    '1.9.4': (184, 110), '1.8.9': (None, 47),
+    '1.9.4': (184, 110), '1.8.9': (None, 47), '1.7.10': (None, 5),
 }
 
 
