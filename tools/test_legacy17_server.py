@@ -4,7 +4,8 @@
 Java is a development oracle, never a player-facing game backend. Official
 inputs stay under ignored .local/. The server binds only to loopback and uses
 a fresh world/player. This checks saved server position and observed block
-updates, not rendering, native world generation, authentication or Android.
+updates, presentation packets and saved sign text. It does not test rendering,
+audio output, native world generation, authentication or Android.
 """
 import argparse
 import hashlib
@@ -117,7 +118,7 @@ def run(args):
                 if datafix_worlds.failed(lines) or any("Cannot " in line for line in lines):
                     raise RuntimeError(f"fixture command failed: {command}: {lines}")
             result = subprocess.run([str(probe), f"127.0.0.1:{port}", "--version", args.version], cwd=ROOT, env=env,
-                                    capture_output=True, text=True, timeout=55)
+                                    capture_output=True, text=True, timeout=65)
             (evidence_dir / "probe-stdout.txt").write_text(result.stdout, encoding="utf-8")
             (evidence_dir / "probe-stderr.txt").write_text(result.stderr, encoding="utf-8")
             if result.returncode:
@@ -126,7 +127,9 @@ def run(args):
             if report.get("protocol") != VERSIONS[args.version] or report.get("profile") != NAME:
                 raise RuntimeError(f"wrong reference protocol/profile: {report}")
             required = ("joined", "position_acknowledged", "fixture_teleport", "stone_anchor",
-                        "red_wool_metadata", "placement_confirmed", "break_confirmed")
+                        "red_wool_metadata", "placement_confirmed", "break_confirmed",
+                        "server_brand", "named_sound", "collected_entity", "attached_entity",
+                        "sign_editor", "sign_text", "map_column", "map_scale", "map_player_icon_rotation")
             if not all(report.get(key) is True for key in required):
                 raise RuntimeError(f"missing server interaction evidence: {report}")
             if report["columns"] < 4 or report["keepalives"] < 2:
@@ -141,8 +144,15 @@ def run(args):
             if len(position) != 3 or any(abs(actual - expected) > 1e-6
                                          for actual, expected in zip(position, (1.5, 64.0, 0.5))):
                 raise RuntimeError(f"server did not accept the movement/stance: saved {position}")
+            chunk = anvil_dump.region_chunks(server_dir / "world" / "region" / "r.0.0.mca")[(0, 0)]["Level"]
+            signs = [tag for tag in chunk.get("TileEntities", [])
+                     if tag.get("id") == "Sign" and (tag.get("x"), tag.get("y"), tag.get("z")) == (2, 64, 1)]
+            expected_lines = ["Nivora", "Rust17", "", "Native"]
+            if len(signs) != 1 or [signs[0].get(f"Text{i}") for i in range(1, 5)] != expected_lines:
+                raise RuntimeError(f"server did not persist the native sign edit: {signs}")
             report.update({"server_version": args.version, "server_sha1": sha1,
-                           "server_saved_position": position, "server_movement_confirmed": True})
+                           "server_saved_position": position, "server_movement_confirmed": True,
+                           "server_saved_sign": expected_lines, "server_sign_edit_confirmed": True})
             (evidence_dir / "result.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
             print(json.dumps(report, indent=2))
         finally:

@@ -4,16 +4,22 @@
 use horizon_protocol::{
     buf::Reader,
     connection::Connection,
-    legacy17::{self, Version},
+    legacy17::{
+        self, Version,
+        presentation::{MapUpdate, Packet as Presentation},
+    },
     legacy18::{self, chunk::Column, play::Packet},
     packets::play::{self as modern, Serverbound},
 };
+use horizon_world::nbt::Tag;
 use std::{
     net::{SocketAddr, TcpStream},
     time::{Duration, Instant},
 };
 
 const NAME: &str = "Legacy17Probe";
+const SIGN_POSITION: [i32; 3] = [2, 64, 1];
+const SIGN_LINES: [&str; 4] = ["Nivora", "Rust17", "", "Native"];
 type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
 
 #[derive(Default)]
@@ -29,6 +35,38 @@ struct Evidence {
     fixture_position: bool,
     placement: bool,
     broken: bool,
+    server_brand: bool,
+    named_sound: bool,
+    collected_entity: bool,
+    attached_entity: bool,
+    sign_editor: bool,
+    sign_text: bool,
+    map_column: bool,
+    map_scale: bool,
+    map_icon: bool,
+}
+
+impl Evidence {
+    fn presentation_complete(&self) -> bool {
+        self.server_brand
+            && self.named_sound
+            && self.collected_entity
+            && self.attached_entity
+            && self.sign_editor
+            && self.sign_text
+            && self.map_column
+            && self.map_scale
+            && self.map_icon
+    }
+}
+
+fn creative_item(id: i16) -> legacy17::slot::Slot {
+    legacy17::slot::Slot {
+        id,
+        count: 1,
+        damage: 0,
+        tag: Tag::End,
+    }
 }
 
 fn send(
@@ -121,9 +159,10 @@ fn main() -> TestResult<()> {
     let mut skylight = true;
     let mut prepared = false;
     let mut placed = false;
+    let mut presentation_started = false;
     let mut moved_at = None;
     let mut keepalives_at_move = 0;
-    let deadline = Instant::now() + Duration::from_secs(35);
+    let deadline = Instant::now() + Duration::from_secs(45);
     let place = Serverbound::UseItemOn(modern::UseItemOn {
         hand: 0,
         pos: [0, 65, 3],
@@ -135,6 +174,65 @@ fn main() -> TestResult<()> {
     });
     while Instant::now() < deadline {
         let (wire_id, payload) = connection.recv()?;
+        if let Some(packet) = Presentation::decode(wire_id, &payload)? {
+            match packet {
+                Presentation::Collect { collector, .. } => {
+                    evidence.collected_entity |= collector == outbound.entity;
+                }
+                Presentation::Attach {
+                    entity,
+                    vehicle,
+                    leash: false,
+                } => {
+                    evidence.attached_entity |= vehicle >= 0 && entity != vehicle;
+                }
+                Presentation::Sound {
+                    name,
+                    position,
+                    volume,
+                    pitch,
+                } => {
+                    eprintln!("observed sound {name} {position:?} volume={volume} pitch={pitch}");
+                    evidence.named_sound |= name == "random.orb"
+                        && position == [12, 512, 4]
+                        && volume == 0.25
+                        && (pitch - 2.0).abs() < f32::EPSILON;
+                }
+                Presentation::OpenSign { position } if position == SIGN_POSITION => {
+                    evidence.sign_editor = true;
+                    connection.send(&legacy17::actions::sign_update(
+                        position,
+                        &SIGN_LINES.map(str::to_owned),
+                    )?)?;
+                    // Filled map 0 is resolved by vanilla. Look packets keep
+                    // its player update path active, as in the actual client.
+                    connection.send(&legacy17::actions::creative_slot(
+                        38,
+                        Some(&creative_item(358)),
+                    )?)?;
+                    connection.send(&legacy17::actions::held_slot(2)?)?;
+                    connection.send(&legacy17::actions::look(90.0, 0.0, true)?)?;
+                }
+                Presentation::Sign { position, lines } => {
+                    evidence.sign_text |= position == SIGN_POSITION && lines == SIGN_LINES;
+                }
+                Presentation::Map { update, .. } => match update {
+                    MapUpdate::Column { .. } => evidence.map_column = true,
+                    MapUpdate::Scale(_) => evidence.map_scale = true,
+                    MapUpdate::Icons(icons) => {
+                        evidence.map_icon |= icons
+                            .iter()
+                            .any(|icon| icon.kind == 0 && icon.rotation == 4);
+                    }
+                },
+                Presentation::Plugin { channel, data } => {
+                    evidence.server_brand |= legacy17::presentation::server_brand(&channel, &data)?
+                        .is_some_and(|brand| brand == "vanilla");
+                }
+                _ => {}
+            }
+            continue;
+        }
         let translated = incoming.translate(wire_id, &payload).map_err(|error| {
             format!(
                 "incoming packet {wire_id:#x} ({} bytes): {error}",
@@ -153,6 +251,9 @@ fn main() -> TestResult<()> {
                         outbound.entity,
                     )?)?;
                     evidence.keepalives += 1;
+                    if presentation_started {
+                        connection.send(&legacy17::actions::look(90.0, 0.0, true)?)?;
+                    }
                 }
                 Packet::Join {
                     entity,
@@ -166,6 +267,11 @@ fn main() -> TestResult<()> {
                     outbound.entity = entity;
                     skylight = dimension == 0;
                     evidence.joined = true;
+                    // Wait for Play before sending play-state plugin data.
+                    connection.send(&legacy17::actions::plugin_message(
+                        "MC|Brand",
+                        b"Nivora Rust",
+                    )?)?;
                     connection.send(&legacy17::actions::client_settings(
                         "en_US", 3, 0, true, 2, true,
                     )?)?;
@@ -240,6 +346,37 @@ fn main() -> TestResult<()> {
             )?;
             prepared = true;
         }
+        if evidence.broken && !presentation_started {
+            command(
+                &mut connection,
+                &mut outbound,
+                "playsound random.orb Legacy17Probe 1.5 64.0 0.5 0.25 2",
+            )?;
+            command(
+                &mut connection,
+                &mut outbound,
+                "summon Pig 4.5 64.0 0.5 {Riding:{id:Boat}}",
+            )?;
+            command(
+                &mut connection,
+                &mut outbound,
+                "summon Item 1.5 64.0 0.5 {Item:{id:264s,Count:1b,Damage:0s},PickupDelay:0s}",
+            )?;
+            connection.send(&legacy17::actions::creative_slot(
+                37,
+                Some(&creative_item(323)),
+            )?)?;
+            connection.send(&legacy17::actions::held_slot(1)?)?;
+            connection.send(&legacy17::actions::place(
+                2,
+                63,
+                1,
+                1,
+                Some(&creative_item(323)),
+                [8, 16, 8],
+            )?)?;
+            presentation_started = true;
+        }
         if prepared
             && evidence.fixture_position
             && evidence.anchor_seen
@@ -260,6 +397,7 @@ fn main() -> TestResult<()> {
         }
         if moved_at.is_some_and(|t: Instant| t.elapsed() >= Duration::from_secs(1))
             && evidence.keepalives >= keepalives_at_move + 2
+            && evidence.presentation_complete()
         {
             println!(
                 "{}",
@@ -270,6 +408,11 @@ fn main() -> TestResult<()> {
                 "states_decoded": evidence.states, "keepalives": evidence.keepalives,
                     "stone_anchor": evidence.anchor_seen, "red_wool_metadata": evidence.metadata_seen,
                     "placement_confirmed": evidence.placement, "break_confirmed": evidence.broken,
+                    "server_brand": evidence.server_brand, "named_sound": evidence.named_sound,
+                    "collected_entity": evidence.collected_entity, "attached_entity": evidence.attached_entity,
+                    "sign_editor": evidence.sign_editor, "sign_text": evidence.sign_text,
+                    "map_column": evidence.map_column, "map_scale": evidence.map_scale,
+                    "map_player_icon_rotation": evidence.map_icon,
                     "movement_sent": [1.5, 64.0, 0.5], "rendering_tested": false,
                     "native_world_generation_tested": false, "online_authentication_tested": false,
                 })
@@ -277,7 +420,9 @@ fn main() -> TestResult<()> {
             return Ok(());
         }
     }
-    Err(format!("incomplete fixture: joined={} positioned={} columns={} teleport={} anchor={} metadata={} placed={} broken={} keepalives={} pose={pose:?}",
+    Err(format!("incomplete fixture: joined={} positioned={} columns={} teleport={} anchor={} metadata={} placed={} broken={} keepalives={} pose={pose:?} presentation=[brand={},sound={},collect={},attach={},editor={},sign={},map_column={},map_scale={},map_icon={}]",
         evidence.joined, evidence.positioned, evidence.columns, evidence.fixture_position,
-        evidence.anchor_seen, evidence.metadata_seen, evidence.placement, evidence.broken, evidence.keepalives).into())
+        evidence.anchor_seen, evidence.metadata_seen, evidence.placement, evidence.broken, evidence.keepalives,
+        evidence.server_brand, evidence.named_sound, evidence.collected_entity, evidence.attached_entity,
+        evidence.sign_editor, evidence.sign_text, evidence.map_column, evidence.map_scale, evidence.map_icon).into())
 }

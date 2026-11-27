@@ -214,3 +214,20 @@ pub fn plugin_message(channel: &str, payload: &[u8]) -> Result<Vec<u8>> {
     w.bytes(payload);
     Ok(w.data)
 }
+
+/// Four plain lines, with short Y, for the front of a 1.7 sign.
+pub fn sign_update(position: [i32; 3], lines: &[String; 4]) -> Result<Vec<u8>> {
+    super::presentation::check_sign_position(position)?;
+    if lines.iter().any(|line| line.encode_utf16().count() > 15) {
+        return Err(Error::new("protocol 4/5 sign line exceeds 15 UTF-16 units"));
+    }
+    let mut w = Writer::new();
+    w.varint(0x12);
+    w.i32(position[0]);
+    w.i16(position[1] as i16);
+    w.i32(position[2]);
+    for line in lines {
+        w.string(line);
+    }
+    Ok(w.data)
+}

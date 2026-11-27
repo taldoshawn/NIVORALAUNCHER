@@ -6,7 +6,9 @@
 pub mod actions;
 pub mod bridge;
 pub mod chunk;
+pub mod local_flat;
 pub mod play;
+pub mod presentation;
 pub mod slot;
 
 use crate::{
