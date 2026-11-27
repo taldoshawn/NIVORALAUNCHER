@@ -11,7 +11,7 @@ use horizon_world::{
     compression::Compression,
     nbt::{Limits, Tag},
     numeric_chunk::NumericChunk,
-    region::{ChunkRecord, RegionFile},
+    region::{ChunkRecord, RegionFile, RegionWriter},
 };
 use std::{
     collections::HashSet,
@@ -55,15 +55,28 @@ fn region(dir: &Path, p: ChunkPos) -> PathBuf {
     let r = p.region();
     dir.join("region").join(format!("r.{}.{}.mca", r.x, r.z))
 }
-fn load(dir: &Path, p: ChunkPos) -> Result<NumericChunk> {
-    match RegionFile::open(region(dir, p)) {
-        Ok(mut file) => {
-            if let Some(record) = file.read(p)? {
-                return Ok(NumericChunk::new(record.nbt(Limits::default())?)?);
-            }
+fn open_region(path: &Path, writable: bool) -> Result<Option<RegionFile>> {
+    match RegionFile::open_strict(path, writable) {
+        Ok(file) => Ok(Some(file)),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+fn load(file: Option<&mut RegionFile>, p: ChunkPos) -> Result<NumericChunk> {
+    if let Some(file) = file
+        && let Some(record) = file.read(p)?
+    {
+        let root = record.nbt(Limits::default())?;
+        let level = root.tag.get("Level");
+        if level.and_then(|l| l.get("xPos")) != Some(&Tag::Int(p.x))
+            || level.and_then(|l| l.get("zPos")) != Some(&Tag::Int(p.z))
+        {
+            return Err(Error::new(
+                "Classic-flat chunk coordinates do not match its region slot",
+            ));
         }
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-        Err(e) => return Err(e.into()),
+        return Ok(NumericChunk::new(root)?);
     }
     Ok(NumericChunk::classic_flat_189(p))
 }
@@ -74,7 +87,7 @@ fn section_bytes<'a>(tag: &'a Tag, name: &str, len: usize) -> Result<&'a [u8]> {
     }
 }
 fn send_column(conn: &mut Connection, dir: &Path, p: ChunkPos) -> Result<()> {
-    let root = load(dir, p)?.into_nbt();
+    let root = load(open_region(&region(dir, p), false)?.as_mut(), p)?.into_nbt();
     let level = root.tag.get("Level").unwrap();
     let Some(Tag::List(sections)) = level.get("Sections") else {
         unreachable!()
@@ -152,16 +165,23 @@ fn stream(
 }
 fn update(conn: &mut Connection, dir: &Path, pos: BlockPos, id: u8) -> Result<()> {
     let p = pos.chunk();
-    let mut chunk = load(dir, p)?;
+    let path = region(dir, p);
+    let mut file = open_region(&path, true)?;
+    let mut chunk = load(file.as_mut(), p)?;
     if chunk.block(pos)? == (u16::from(id), 0) {
         return Ok(());
     }
     chunk.set_block(pos, u16::from(id), 0)?;
     chunk.update_classic_flat_skylight()?;
     let record = ChunkRecord::from_nbt(&chunk.into_nbt(), Compression::Zlib, 0, Limits::default())?;
-    let mut file = RegionFile::open_writable(region(dir, p), true)?;
-    file.write(p, &record)?;
-    file.sync()?;
+    if let Some(mut file) = file {
+        file.write(p, &record)?;
+        file.sync()?;
+    } else {
+        let mut writer = RegionWriter::create(path)?;
+        writer.write(p, &record)?;
+        writer.finish()?;
+    }
     let mut w = packet(0x23);
     w.i64(super::actions::block_position(pos.x, pos.y, pos.z)? as i64);
     w.varint(i32::from(id) << 4);
@@ -372,6 +392,50 @@ mod tests {
     use super::*;
     use crate::legacy18::{chunk::Column, login, play::Packet};
     use std::time::Duration;
+
+    #[test]
+    fn damaged_region_is_not_treated_as_empty_or_modified() {
+        let mut suffix = [0; 8];
+        getrandom::fill(&mut suffix).unwrap();
+        let dir =
+            std::env::temp_dir().join(format!("nivora-damaged-{}", u64::from_le_bytes(suffix)));
+        fs::create_dir_all(dir.join("region")).unwrap();
+        let p = ChunkPos::new(0, 0);
+        let path = region(&dir, p);
+        // A neighboring chunk points past the end of the file. The generic
+        // reader tolerates this, but touching a different chunk must not erase it.
+        let mut bytes = vec![0; 8192];
+        bytes[4..8].copy_from_slice(&0x00000301u32.to_be_bytes());
+        fs::write(&path, &bytes).unwrap();
+        let (server, _client) = Pipe::pair();
+        let mut conn = Connection::local(server);
+        assert!(update(&mut conn, &dir, BlockPos::new(0, 4, 0), 1).is_err());
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+
+        // Two chunks claiming the same sector must also fail closed.
+        bytes.resize(12288, 0);
+        bytes[..4].copy_from_slice(&0x00000201u32.to_be_bytes());
+        bytes[4..8].copy_from_slice(&0x00000201u32.to_be_bytes());
+        fs::write(&path, &bytes).unwrap();
+        assert!(update(&mut conn, &dir, BlockPos::new(0, 4, 0), 1).is_err());
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        fs::remove_file(&path).unwrap();
+        let wrong_chunk = NumericChunk::classic_flat_189(ChunkPos::new(1, 0));
+        let record = ChunkRecord::from_nbt(
+            &wrong_chunk.into_nbt(),
+            Compression::Zlib,
+            0,
+            Limits::default(),
+        )
+        .unwrap();
+        let mut writer = RegionWriter::create(&path).unwrap();
+        writer.write(p, &record).unwrap();
+        writer.finish().unwrap();
+        let before = fs::read(&path).unwrap();
+        assert!(update(&mut conn, &dir, BlockPos::new(0, 4, 0), 1).is_err());
+        assert_eq!(fs::read(&path).unwrap(), before);
+        fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn play_edit_walk_disconnect_and_reopen_through_the_memory_protocol() {

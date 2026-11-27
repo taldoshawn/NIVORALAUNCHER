@@ -46,6 +46,11 @@ versão para o motor nativo, além de instalação de
 recursos, isolamento de mundos e validação de controles e renderização. Esta
 alteração não adiciona entradas de versão que iniciariam outro jogo.
 
+O criativo plano recusa regiões com cabeçalho truncado, alocações inválidas ou
+sobrepostas e chunks cujas coordenadas divergem do slot. A tentativa de edição
+preserva os bytes do arquivo nesses casos. Regiões novas são publicadas somente
+após concluir a escrita. Essa proteção não recupera arquivos já danificados.
+
 ## Verificação direcionada
 
 ```sh

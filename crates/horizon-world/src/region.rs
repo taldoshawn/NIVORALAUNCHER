@@ -115,7 +115,7 @@ impl RegionFile {
     pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
         let path = path.as_ref().to_owned();
         let file = File::open(&path)?;
-        Self::from_file(path, file)
+        Self::from_file(path, file, false)
     }
 
     /// Open for reading and in-place writes (`write`, `clear`), creating an
@@ -128,10 +128,17 @@ impl RegionFile {
             .create(create)
             .truncate(false)
             .open(&path)?;
-        Self::from_file(path, file)
+        Self::from_file(path, file, false)
     }
 
-    fn from_file(path: PathBuf, mut file: File) -> io::Result<Self> {
+    /// Open an existing region without recovering or discarding damaged allocations.
+    pub fn open_strict(path: impl AsRef<Path>, writable: bool) -> io::Result<Self> {
+        let path = path.as_ref().to_owned();
+        let file = OpenOptions::new().read(true).write(writable).open(&path)?;
+        Self::from_file(path, file, true)
+    }
+
+    fn from_file(path: PathBuf, mut file: File, strict: bool) -> io::Result<Self> {
         let position = position_from_path(&path)?;
         let len = file.metadata()?.len();
         // RegionFile's constructor: a short header (an empty or truncated file)
@@ -144,8 +151,12 @@ impl RegionFile {
                 n => read += n,
             }
         }
+        if strict && read < HEADER {
+            return Err(invalid("truncated region header"));
+        }
         let mut offsets = [0; 1024];
         let mut timestamps = [0; 1024];
+        let mut spans = Vec::new();
         for i in 0..1024 {
             offsets[i] = u32::from_be_bytes(header[i * 4..i * 4 + 4].try_into().unwrap());
             timestamps[i] = u32::from_be_bytes(
@@ -158,11 +169,23 @@ impl RegionFile {
             }
             let start = offsets[i] >> 8;
             let count = offsets[i] & 255;
+            if strict {
+                let end = start + count;
+                if start < 2 || count == 0 || u64::from(end) * SECTOR as u64 > len {
+                    return Err(invalid("invalid region allocation"));
+                }
+                spans.push((start, end));
+                continue;
+            }
             // Vanilla drops entries that overlap the header, are empty or start past
             // the end of the file (logged as invalid sectors).
             if start < 2 || count == 0 || u64::from(start) * SECTOR as u64 > len {
                 offsets[i] = 0;
             }
+        }
+        spans.sort_unstable();
+        if spans.windows(2).any(|pair| pair[0].1 > pair[1].0) {
+            return Err(invalid("overlapping region allocations"));
         }
         let mut region = Self {
             file,

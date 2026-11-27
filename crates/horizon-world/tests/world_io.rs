@@ -48,6 +48,54 @@ fn record(len: usize) -> ChunkRecord {
 }
 
 #[test]
+fn strict_open_rejects_damaged_allocations_without_changing_bytes() {
+    let dir = Directory::new();
+    for offsets in [
+        (0x101u32, 0),
+        (0x200, 0),
+        (0x301, 0),
+        (0x202, 0),
+        (0x201, 0x201),
+    ] {
+        malformed_region(&dir.region(), offsets.0, offsets.1, 1, 3);
+        let before = fs::read(dir.region()).unwrap();
+        for writable in [false, true] {
+            assert!(RegionFile::open_strict(dir.region(), writable).is_err());
+            assert_eq!(fs::read(dir.region()).unwrap(), before);
+        }
+    }
+    for len in [0, 4096, 8191] {
+        fs::write(dir.region(), vec![0; len]).unwrap();
+        assert!(RegionFile::open_strict(dir.region(), true).is_err());
+        assert_eq!(fs::metadata(dir.region()).unwrap().len(), len as u64);
+    }
+}
+
+#[test]
+fn strict_open_edits_valid_regions_and_keeps_neighbor_payloads() {
+    let dir = Directory::new();
+    let a = ChunkPos::new(-32, 0);
+    let b = ChunkPos::new(-31, 0);
+    let mut writer = RegionWriter::create(dir.region()).unwrap();
+    writer.write(a, &record(100)).unwrap();
+    writer.write(b, &record(200)).unwrap();
+    writer.finish().unwrap();
+    let mut region = RegionFile::open_strict(dir.region(), true).unwrap();
+    region.write(a, &record(9000)).unwrap();
+    region.sync().unwrap();
+    drop(region);
+    let mut region = RegionFile::open_strict(dir.region(), false).unwrap();
+    assert_eq!(
+        region.read(a).unwrap().unwrap().compressed,
+        record(9000).compressed
+    );
+    assert_eq!(
+        region.read(b).unwrap().unwrap().compressed,
+        record(200).compressed
+    );
+}
+
+#[test]
 fn external_threshold_negative_coordinates_and_timestamps_roundtrip() {
     let dir = Directory::new();
     let a = ChunkPos::new(-32, 0);
