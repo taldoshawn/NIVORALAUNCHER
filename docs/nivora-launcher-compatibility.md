@@ -51,6 +51,9 @@ sobrepostas e chunks cujas coordenadas divergem do slot. A tentativa de edição
 preserva os bytes do arquivo nesses casos. Regiões novas são publicadas somente
 após concluir a escrita. Essa proteção não recupera arquivos já danificados.
 
+O mundo plano guarda o tempo de jogo ao sair e retoma o ciclo de dia e noite
+ao reabrir. Mundos anteriores começam ao meio-dia na primeira abertura.
+
 O estado do jogador usa um JSON versionado que mantém posição e slot selecionado
 na mesma gravação. Os arquivos antigos contendo somente a posição continuam
 aceitos, inicialmente com o primeiro slot selecionado. Versões desconhecidas ou

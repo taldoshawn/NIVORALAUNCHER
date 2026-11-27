@@ -238,16 +238,35 @@ fn read_player(dir: &Path) -> Result<PlayerSave> {
     Ok(player)
 }
 
-fn save_player(dir: &Path, player: &PlayerSave) -> Result<()> {
+fn save_json(dir: &Path, name: &str, value: &impl serde::Serialize) -> Result<()> {
     use std::io::Write;
-    let tmp = dir.join("player.json.tmp");
+    let tmp = dir.join(format!("{name}.tmp"));
     let mut f = fs::File::create(&tmp)?;
-    serde_json::to_writer(&mut f, player).map_err(|e| Error::new(e.to_string()))?;
+    serde_json::to_writer(&mut f, value).map_err(|e| Error::new(e.to_string()))?;
     f.flush()?;
     f.sync_all()?;
     drop(f);
-    fs::rename(tmp, dir.join("player.json"))?;
+    fs::rename(tmp, dir.join(name))?;
     Ok(())
+}
+
+// This world has a fixed initial noon offset; only its elapsed ticks need saving.
+fn read_age(dir: &Path) -> Result<i64> {
+    match fs::read(dir.join("world-age.json")) {
+        Ok(bytes) => serde_json::from_slice::<i64>(&bytes)
+            .ok()
+            .filter(|age| (0..=i64::MAX - 6000).contains(age))
+            .ok_or_else(|| Error::new("Invalid saved classic-flat world age")),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(0),
+        Err(e) => Err(e.into()),
+    }
+}
+
+fn send_time(conn: &mut Connection, age: i64) -> Result<()> {
+    let mut w = packet(3);
+    w.i64(age);
+    w.i64(age + 6000);
+    conn.send(&w.data)
 }
 
 fn teleport(conn: &mut Connection, pose: [f64; 5]) -> Result<()> {
@@ -295,10 +314,8 @@ fn play(conn: &mut Connection, dir: &Path) -> Result<()> {
     w.f32(0.05);
     w.f32(0.1);
     conn.send(&w.data)?;
-    let mut w = packet(3);
-    w.i64(0);
-    w.i64(6000);
-    conn.send(&w.data)?;
+    let initial_age = read_age(dir)?;
+    send_time(conn, initial_age)?;
     let mut player = read_player(dir)?;
     let mut saved_player = player;
     let mut pose = player.pose;
@@ -321,7 +338,15 @@ fn play(conn: &mut Connection, dir: &Path) -> Result<()> {
     let mut loaded = HashSet::new();
     let mut radius = 2;
     stream(conn, dir, center, radius, &mut loaded)?;
-    let mut keep_alive = Instant::now();
+    let started = Instant::now();
+    let age_now = || {
+        initial_age
+            .saturating_add((started.elapsed().as_millis() / 50) as i64)
+            .min(i64::MAX - 6000)
+    };
+    let mut last_sync = initial_age;
+    let mut saved_age = initial_age;
+    let mut keep_alive = started;
     let session = (|| -> Result<()> {
         loop {
             let (id, body) = conn.recv()?;
@@ -397,10 +422,19 @@ fn play(conn: &mut Connection, dir: &Path) -> Result<()> {
             }
             player.pose = pose;
             player.held = held as u8;
+            let age = age_now();
+            if age - last_sync >= 20 {
+                send_time(conn, age)?;
+                last_sync = age;
+            }
             if keep_alive.elapsed().as_secs() >= 10 {
                 if saved_player != player {
-                    save_player(dir, &player)?;
+                    save_json(dir, "player.json", &player)?;
                     saved_player = player;
+                }
+                if age != saved_age {
+                    save_json(dir, "world-age.json", &age)?;
+                    saved_age = age;
                 }
                 let mut w = packet(0);
                 w.varint(1);
@@ -412,7 +446,11 @@ fn play(conn: &mut Connection, dir: &Path) -> Result<()> {
     player.pose = pose;
     player.held = held as u8;
     if saved_player != player {
-        save_player(dir, &player)?;
+        save_json(dir, "player.json", &player)?;
+    }
+    let age = age_now();
+    if age != saved_age {
+        save_json(dir, "world-age.json", &age)?;
     }
     session
 }
@@ -436,7 +474,7 @@ mod tests {
         assert_eq!(player.pose, [12.5, 4., -20.5, 180., 45.]);
         assert_eq!(player.held, 0);
         player.held = 8;
-        save_player(&dir, &player).unwrap();
+        save_json(&dir, "player.json", &player).unwrap();
         assert_eq!(read_player(&dir).unwrap().held, 8);
         assert_eq!(read_player(&dir).unwrap().pose, player.pose);
         for invalid in [
@@ -502,6 +540,17 @@ mod tests {
         getrandom::fill(&mut suffix).unwrap();
         let dir =
             std::env::temp_dir().join(format!("nivora-classic-{}", u64::from_le_bytes(suffix)));
+        fs::create_dir_all(&dir).unwrap();
+        assert_eq!(read_age(&dir).unwrap(), 0);
+        for bad_age in ["-1", "9223372036854775807", "broken"] {
+            fs::write(dir.join("world-age.json"), bad_age).unwrap();
+            assert!(read_age(&dir).is_err());
+            assert_eq!(
+                fs::read_to_string(dir.join("world-age.json")).unwrap(),
+                bad_age
+            );
+        }
+        fs::write(dir.join("world-age.json"), "17999").unwrap();
         let connect = || {
             let pipe = open(dir.clone()).unwrap();
             let (c, _) = login(
@@ -529,6 +578,8 @@ mod tests {
                 columns += 1;
             }
         }
+        // One complete tick before leaving, including an idle period.
+        std::thread::sleep(Duration::from_millis(55));
         let mut select = packet(9);
         select.i16(2);
         c.send(&select.data).unwrap();
@@ -574,10 +625,19 @@ mod tests {
         }
         drop(lock);
         let mut c = connect();
+        let age = read_age(&dir).unwrap();
+        assert!(age >= 18000);
+        let mut restored_clock = false;
         let mut restored = false;
         let mut restored_slot = false;
         loop {
             let (id, b) = c.recv().unwrap();
+            if id == 3 {
+                let mut r = Reader::new(&b);
+                assert_eq!(r.i64().unwrap(), age);
+                assert_eq!(r.i64().unwrap(), 6000 + age);
+                restored_clock = true;
+            }
             if id == 9 {
                 assert_eq!(Packet::decode(id, &b).unwrap(), Packet::HeldSlot(2));
                 restored_slot = true;
@@ -597,6 +657,7 @@ mod tests {
         }
         assert!(restored);
         assert!(restored_slot);
+        assert!(restored_clock);
         drop(c);
         fs::remove_dir_all(dir).unwrap();
     }
