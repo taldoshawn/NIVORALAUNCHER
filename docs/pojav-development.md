@@ -1,7 +1,9 @@
 # Desenvolvimento para Pojav Rust
 
-O motor deste fork usa recursos e APIs do Horizon 26.3. A seleção 1.8.9 muda
-somente a conexão multiplayer. Ela não transforma as APIs locais em APIs Forge.
+O cliente usa os recursos e as APIs do Horizon 26.3. Os perfis 1.7.2, 1.7.10
+e 1.8.9 usam transportes próprios de multiplayer e oferecem criativo plano
+experimental. Mods nativos continuam usando as APIs do Horizon. Consulte a
+[tabela de compatibilidade](nivora-launcher-compatibility.md).
 
 ## Controles e mouse
 

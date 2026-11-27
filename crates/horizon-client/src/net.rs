@@ -199,6 +199,19 @@ impl Session {
             "local", name, None, info, lang, Some(pipe), None, resources, false, true, None,
         )
     }
+    /// Join the 1.7 classic-flat preview through memory using its own login and play transport.
+    pub fn connect_local_legacy17(
+        pipe: horizon_protocol::connection::Pipe,
+        version: horizon_protocol::legacy17::Version,
+        name: &str,
+        info: cfg::ClientInformation,
+        lang: Arc<Language>,
+        resources: PathBuf,
+    ) -> Self {
+        Self::start(
+            "local", name, None, info, lang, Some(pipe), None, resources, false, true, Some(version),
+        )
+    }
     pub fn connect_legacy(
         address: &str, name: &str, auth: Option<Arc<AuthSession>>,
         info: cfg::ClientInformation, lang: Arc<Language>, resources: PathBuf,
@@ -256,6 +269,7 @@ impl Session {
                 let result = if let Some(version) = legacy17 {
                     legacy17::run(
                         version,
+                        local,
                         &address_owned,
                         &name_owned,
                         auth.as_deref(),

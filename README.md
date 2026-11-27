@@ -11,7 +11,7 @@ ARM64 é a arquitetura dos celulares atuais. As variantes ARMv7 e x86 de 32 bits
 - ARM64 / x86_64: Android 9 (API 28) ou superior.
 - ARMv7 / x86: Android 8.1 (API 27) ou superior.
 - GPU com OpenGL ES 3 ou Vulkan compatível; memória e drivers também limitam o funcionamento.
-- Na primeira abertura, toque em **Instalar** para obter os recursos; depois, use **Jogar**. A seta ao lado do botão permite selecionar **1.8.9** para multiplayer de protocolo 47 ou **26.3**. Os mundos locais permanecem na versão do motor moderno.
+- Na primeira abertura, toque em **Instalar** para obter os recursos; depois, use **Jogar**. No código atual, a seta ao lado do botão permite selecionar **1.7.2**, **1.7.10**, **1.8.9** ou **26.3**. As seleções clássicas oferecem multiplayer e um mundo criativo plano experimental por versão e perfil. Consulte a [compatibilidade](docs/nivora-launcher-compatibility.md).
 - Servidores autenticados precisam de uma conta que possua Minecraft Java.
 
 ## Compatibilidade atual
@@ -23,8 +23,8 @@ instalou a variante x86_64 no emulador Android 15, abriu as seis páginas princi
 importou um resource pack da pasta externa e confirmou movimento, quebra,
 colocação e um ataque contra outro cliente de teste em um servidor Cuberite local.
 Isso não comprova combate completo, servidores públicos, desempenho em um celular
-físico nem compatibilidade universal. Forge, OptiFine e singleplayer 1.8.9 não
-estão implementados.
+físico nem compatibilidade universal. O criativo plano clássico tem escopo
+limitado a terreno plano e à edição de blocos com uma barra fixa.
 
 A release inclui [documentação e exemplos](https://github.com/taldoshawn/NIVORALAUNCHER/releases/download/v0.1.0-alpha.3/Pojav-Rust-Documentacao-e-Exemplos.zip)
 e [capturas reais do APK](https://github.com/taldoshawn/NIVORALAUNCHER/releases/download/v0.1.0-alpha.3/Pojav-Rust-Capturas-do-APK.zip).

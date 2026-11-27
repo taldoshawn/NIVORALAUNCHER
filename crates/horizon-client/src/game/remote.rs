@@ -426,6 +426,7 @@ enum OwnProfile {
 
 pub(super) struct Remote {
     pub session: Session,
+    classic_flat: bool,
     pub brand: String,
     /// The server announced it runs mods' quiet commands.
     pub quiet_commands: bool,
@@ -771,20 +772,30 @@ impl Game<'_> {
         }
         Ok(())
     }
-    pub(super) fn open_classic_flat_189(&mut self) -> Result<()> {
-        if self.options.legacy17.is_some() {
-            return self.show_connection_error(Err(
-                "Singleplayer 1.7 ainda não implementado. Selecione Multiplayer.".into(),
-            ));
-        }
-        if self.defer_world_entry(super::PendingWorldEntry::ClassicFlat189)? {
+    pub(super) fn open_classic_flat(&mut self) -> Result<()> {
+        if self.defer_world_entry(super::PendingWorldEntry::ClassicFlat)? {
             return Ok(());
         }
         self.join_world_rest()?;
-        let directory = std::env::current_dir()?.join("legacy-worlds/1.8.9/classic-flat");
         let result = (|| {
-            let pipe = horizon_protocol::legacy18::local_flat::open(directory)?;
-            self.join_server("classic-flat-189", &self.options.player_name(), Some(pipe), None, false)
+            let directory = std::env::current_dir()?.join("legacy-worlds");
+            let pipe = match self.options.legacy17 {
+                Some(version) => horizon_protocol::legacy17::local_flat::open(
+                    directory.join(version.release()).join("classic-flat"),
+                    version,
+                )?,
+                None if self.options.legacy18 => horizon_protocol::legacy18::local_flat::open(
+                    directory.join("1.8.9").join("classic-flat"),
+                )?,
+                None => return Err("Selecione uma versão clássica para abrir este mundo.".into()),
+            };
+            self.join_server(
+                "classic-flat",
+                &self.options.player_name(),
+                Some(pipe),
+                None,
+                false,
+            )
         })();
         self.show_connection_error(result)
     }
@@ -804,6 +815,7 @@ impl Game<'_> {
         cookies: Option<horizon_client::net::Cookies>,
         lan: bool,
     ) -> Result<()> {
+        let classic_flat = local.is_some() && address == "classic-flat";
         self.reset_tutorial();
         self.perf.world_opening();
         // A server's own biomes come over the connection; the last local
@@ -839,9 +851,14 @@ impl Game<'_> {
         );
         self.server_packs_connect(local.is_none().then_some(address), user);
         let session = match local {
-            Some(pipe) if address == "classic-flat-189" => {
-                Session::connect_local_legacy(pipe, name, info.clone(), lang.clone(), root.clone())
-            }
+            Some(pipe) if classic_flat => match self.options.legacy17 {
+                Some(version) => Session::connect_local_legacy17(
+                    pipe, version, name, info.clone(), lang.clone(), root.clone(),
+                ),
+                None => Session::connect_local_legacy(
+                    pipe, name, info.clone(), lang.clone(), root.clone(),
+                ),
+            },
             Some(pipe) => {
                 Session::connect_local(pipe, name, info.clone(), lang.clone(), root.clone())
             }
@@ -985,6 +1002,7 @@ impl Game<'_> {
             });
         self.remote = Some(Remote {
             session,
+            classic_flat,
             brand: "unknown".into(),
             quiet_commands: false,
             mod_net: false,
@@ -1125,9 +1143,10 @@ impl Game<'_> {
         self.clear_narrator();
         // A world is leaving either way: its icon attempt goes with it.
         self.world_icon = None;
-        if let Some(mut r) = self.remote.take() {
-            r.session.disconnect();
-        }
+        let classic_flat = self.remote.take().is_some_and(|mut remote| {
+            remote.session.disconnect();
+            remote.classic_flat
+        });
         super::lan::forget_sync_data();
         self.gui.atlas.object_skins.clear();
         self.server_packs_disconnect();
@@ -1192,7 +1211,7 @@ impl Game<'_> {
         title.legacy17 = self.options.legacy17;
         title.last_server = self.settings.file.string("lastServer");
         title.skip_multiplayer_warning = self.settings.file.bool("skipMultiplayerWarning");
-        if single_player && reason.is_none() {
+        if (single_player || classic_flat) && reason.is_none() {
             self.title = Some(title);
             self.capture(false);
             return Ok(());

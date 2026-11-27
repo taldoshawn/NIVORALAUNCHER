@@ -7,6 +7,7 @@ use horizon_protocol::{
 
 pub(super) fn run(
     version: Version,
+    local: Option<horizon_protocol::connection::Pipe>,
     address: &str,
     name: &str,
     auth: Option<&AuthSession>,
@@ -18,10 +19,14 @@ pub(super) fn run(
     bridge: &Mutex<Outbound>,
 ) -> Result<Reason, Reason> {
     status(send, &tr(lang, "connect.connecting"));
-    let (host, port) =
-        parse_address(address).ok_or_else(|| Reason::plain("Invalid server address"))?;
-    let (connection, host, port) =
-        connect_tcp(&host, port, false, READ_TIMEOUT).map_err(Reason::plain)?;
+    let (connection, host, port) = match local {
+        Some(pipe) => (Connection::local(pipe), "localhost".to_owned(), 25565),
+        None => {
+            let (host, port) =
+                parse_address(address).ok_or_else(|| Reason::plain("Invalid server address"))?;
+            connect_tcp(&host, port, false, READ_TIMEOUT).map_err(Reason::plain)?
+        }
+    };
     *counters.lock().unwrap() = Some(connection.reader.counters.clone());
     status(send, "Logging in to Minecraft 1.7...");
     let outcome = legacy17::login_outcome(

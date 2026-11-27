@@ -505,13 +505,10 @@ impl Launcher {
             if !self.launching {
                 self.launching = true;
                 self.error = None;
-                self.catalog.status = if self.catalog.config.legacy17 {
-                    "Abrindo multiplayer Minecraft 1.7.10 experimental…"
-                } else if self.catalog.config.legacy18 {
-                    "Abrindo Minecraft 1.8.9 experimental…"
-                } else {
-                    "Starting Minecraft 26.3..."
-                }.into();
+                self.catalog.status = format!(
+                    "Abrindo Minecraft {}…",
+                    self.catalog.config.game_version_label()
+                );
                 let game_home = self.catalog.config.game_home(&self.home);
                 if !self.session_ready && crate::account::Accounts::load().selected().is_some() {
                     let id = self.catalog.config.microsoft_client_id.clone();
@@ -627,7 +624,7 @@ impl Launcher {
                 self.wardrobe
                     .prepare_game(&self.catalog.config.name, &game_home)?;
             }
-            let mut extra_arguments = if crate::PUBLIC_BUILD {
+            let extra_arguments = if crate::PUBLIC_BUILD {
                 Vec::new()
             } else {
                 match std::fs::read(self.home.join("android-launch.json")) {
@@ -657,11 +654,6 @@ impl Launcher {
             horizon_client::android_runtime::clear_gamepads();
             self.controller_edges = Default::default();
             self.controller_repeat = None;
-            if self.catalog.config.legacy17 {
-                extra_arguments.push("--protocol-5".into());
-            } else if self.catalog.config.legacy18 {
-                extra_arguments.push("--protocol-47".into());
-            }
             let request = crate::game_launch::LaunchRequest {
                 resources: self
                     .home
@@ -673,6 +665,7 @@ impl Launcher {
                 server: self.catalog.config.server.clone(),
                 control_socket: (!crate::PUBLIC_BUILD).then(|| self.home.join("control.json")),
                 extra_arguments,
+                version: self.catalog.config.game_version,
                 open_gl: self.catalog.config.renderer == crate::catalog::RendererMode::OpenGl,
                 gpu_batching: self.catalog.config.renderer == crate::catalog::RendererMode::Vulkan,
             };

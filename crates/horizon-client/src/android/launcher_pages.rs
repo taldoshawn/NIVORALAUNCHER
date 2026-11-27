@@ -399,8 +399,7 @@ pub(super) enum Action {
     ToggleFastChunkUpload,
     // Controls & Control Editor actions
     GameVersion,
-    ChooseGameVersion(bool),
-    ChooseLegacy17,
+    ChooseGameVersion(crate::game_launch::GameVersion),
     KeyboardControlPreset,
     PojavControlPreset,
     OpenControlEditor,
@@ -1600,7 +1599,7 @@ impl Launcher {
                 horizon_client::mod_list::ANDROID_BUNDLED
                     .into_iter()
                     .filter(|(id, title, _)| {
-                        if !horizon_client::mod_list::bundled_visible(id, self.catalog.config.legacy18) { return false; }
+                        if !horizon_client::mod_list::bundled_visible(id, self.catalog.config.game_version.is_legacy()) { return false; }
                         query.is_empty()
                             || id.contains(&query)
                             || title.to_lowercase().contains(&query)
@@ -7355,7 +7354,7 @@ impl Launcher {
                         horizon_client::mod_list::ANDROID_BUNDLED
                             .iter()
                             .filter(|(id, title, _)| {
-                        if !horizon_client::mod_list::bundled_visible(id, self.catalog.config.legacy18) { return false; }
+                        if !horizon_client::mod_list::bundled_visible(id, self.catalog.config.game_version.is_legacy()) { return false; }
                                 query.is_empty()
                                     || id.contains(&query)
                                     || title.to_lowercase().contains(&query)
@@ -7430,16 +7429,8 @@ impl Launcher {
             }
             Some(Action::Profile) => self.open_chooser(chooser::Kind::Profile),
             Some(Action::GameVersion) => self.open_chooser(chooser::Kind::GameVersion),
-            Some(Action::ChooseGameVersion(legacy)) => {
-                self.catalog.config.legacy18 = legacy;
-                self.catalog.config.legacy17 = false;
-                self.catalog.config.save(&self.home)?;
-                self.chooser = None;
-                self.catalog.refresh(&self.home);
-            }
-            Some(Action::ChooseLegacy17) => {
-                self.catalog.config.legacy17 = true;
-                self.catalog.config.legacy18 = true;
+            Some(Action::ChooseGameVersion(version)) => {
+                self.catalog.config.game_version = version;
                 self.catalog.config.save(&self.home)?;
                 self.chooser = None;
                 self.catalog.refresh(&self.home);

@@ -30,6 +30,13 @@ pub enum Version {
 }
 
 impl Version {
+    pub const fn release(self) -> &'static str {
+        match self {
+            Self::V1_7_2 => "1.7.2",
+            Self::V1_7_10 => "1.7.10",
+        }
+    }
+
     pub const fn protocol(self) -> i32 {
         match self {
             Self::V1_7_2 => 4,

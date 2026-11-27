@@ -40,15 +40,15 @@ o multiplayer ainda precisa de conectividade entre os aparelhos.
 | 26.3 | Motor de mundos locais e multiplayer existente |
 | 1.8–1.8.9 | Transporte multiplayer de protocolo 47 experimental |
 | 1.8.9 singleplayer | Criativo plano experimental. Um mundo por perfil com nove blocos na barra, terreno plano, posição e slot selecionado salvos. Sobrevivência, criaturas e geração normal continuam pendentes. |
-| 1.7.10 | Transporte nativo de protocolo 5, multiplayer experimental. Login, chunks, inventário, movimento, colocação e quebra validados com servidor vanilla. Singleplayer indisponível. |
-| 1.7.2 | Transporte nativo de protocolo 4 validado com servidor vanilla; seleção pela CLI. Sem motor local 1.7. |
+| 1.7.6–1.7.10 | Seletor 1.7.10, protocolo 5. Multiplayer validado com servidor 1.7.10 e criativo plano experimental. |
+| 1.7.2–1.7.5 | Seletor 1.7.2, protocolo 4. Multiplayer validado com servidor 1.7.2 e criativo plano experimental. |
 | 1.12.2, 1.20.1 e demais versões históricas | Clientes e motores ainda não implementados; consultas de status e leitura de regiões não equivalem a suporte de jogo. |
 
 A escolha do projeto é manter somente Rust. Executar essas versões de fato
 exige portar as regras, os registros, a geração de mundo e os saves de cada
 versão para o motor nativo, além de instalação de
-recursos, isolamento de mundos e validação de controles e renderização. A
-seleção 1.7 bloqueia a abertura de mundos locais até existir esse motor.
+recursos, isolamento de mundos e validação de controles e renderização. Cada
+perfil tem um mundo criativo plano independente para 1.7.2 e outro para 1.7.10.
 Consulte a [implementação 1.7](legacy17-protocol.md) e sua
 [validação contra servidores originais](legacy17-validation.md).
 
@@ -57,10 +57,10 @@ sobrepostas e chunks cujas coordenadas divergem do slot. A tentativa de edição
 preserva os bytes do arquivo nesses casos. Regiões novas são publicadas somente
 após concluir a escrita. Essa proteção não recupera arquivos já danificados.
 
-O mundo plano guarda o tempo de jogo ao sair e retoma o ciclo de dia e noite
-ao reabrir. Mundos anteriores começam ao meio-dia na primeira abertura.
+Na 1.8.9, o mundo plano guarda o tempo de jogo ao sair e retoma o ciclo de dia
+e noite ao reabrir. Mundos anteriores começam ao meio-dia na primeira abertura.
 
-O estado do jogador usa um JSON versionado que mantém posição e slot selecionado
+Na 1.8.9, o estado do jogador usa um JSON versionado que mantém posição e slot selecionado
 na mesma gravação. Os arquivos antigos contendo somente a posição continuam
 aceitos, inicialmente com o primeiro slot selecionado. Versões desconhecidas ou
 valores inválidos interrompem a abertura sem substituir o save.
@@ -68,12 +68,15 @@ valores inválidos interrompem a abertura sem substituir o save.
 ## Verificação direcionada
 
 O diagnóstico Rust `historical_status` consulta a versão anunciada e a
-latência de um servidor existente. Aceita 1.7.10 (protocolo 5), 1.12.2 (340)
-e 1.20.1 (763). O campo `protocol_matches` compara o número anunciado com o
-selecionado. A consulta termina antes do login.
+latência de um servidor existente. Aceita nomes para 1.7.2–1.8.9, 1.12.2,
+1.20.1 e a versão do motor. Para consultar servidores de outras versões,
+informe o número do protocolo ou use `auto` para descobrir o número anunciado.
+A consulta termina antes do login. O campo `protocol_matches` indica se os
+números coincidem e vale `null` em modo automático.
 
 ```sh
 cargo run -p horizon-protocol --example historical_status -- 1.7.10 127.0.0.1 25565
+cargo run -p horizon-protocol --example historical_status -- auto 127.0.0.1 25565
 ```
 
 O teste de interoperabilidade cria mundos temporários com os servidores de

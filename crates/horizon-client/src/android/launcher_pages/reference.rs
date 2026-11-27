@@ -291,8 +291,8 @@ impl Launcher {
             color::hex(0x0D1024, 224),
         );
         ui.border(x, hero[1], w, hero[3], 28.0 * s, LINE);
-        let legacy = self.catalog.config.legacy18;
-        let version = if legacy { "1.8.9" } else { "26.3" };
+        let legacy = self.catalog.config.game_version.is_legacy();
+        let version = self.catalog.config.game_version_label();
         let installed = horizon_client::official_install::ready(&self.home);
         let state = if installed {
             "PRONTO PARA JOGAR"
@@ -330,7 +330,7 @@ impl Launcher {
             226.0 * s,
             WHITE,
             if legacy {
-                "Criativo plano • servidores 1.8–1.8.9 • experimental"
+                "Criativo plano e multiplayer experimentais"
             } else {
                 "Mundos singleplayer • multiplayer • LAN"
             },
@@ -586,7 +586,7 @@ impl Launcher {
             for (id, title, description) in horizon_client::mod_list::ANDROID_BUNDLED {
                 if !horizon_client::mod_list::remote::available(id) { continue; }
                 let (title, description) = horizon_client::mod_list::remote::labels(id, title, description);
-                if horizon_client::mod_list::bundled_visible(id, self.catalog.config.legacy18)
+                if horizon_client::mod_list::bundled_visible(id, self.catalog.config.game_version.is_legacy())
                     && (q.is_empty() || title.to_lowercase().contains(&q) || id.contains(&q)) {
                     rows.push((
                         id.into(),

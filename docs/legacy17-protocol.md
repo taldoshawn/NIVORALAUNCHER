@@ -7,10 +7,15 @@ movimento e interações básicas foram exercitados contra servidores vanilla
 
 ## Selecionar
 
-No launcher Android, selecione **Versão → 1.7.10** e entre em **Multiplayer**.
-A escolha é preservada no perfil do launcher. Ela inicia o transporte de
-protocolo 5 e identifica a sessão como experimental. A consulta e a indicação
-de compatibilidade na lista de servidores acompanham o protocolo selecionado.
+No launcher Android, selecione **Versão → 1.7.2** ou **Versão → 1.7.10**.
+A escolha é preservada na configuração do launcher. Abra **Multiplayer** para
+usar o protocolo selecionado ou **Criativo plano 1.7 (experimental)** para
+jogar offline. A lista de servidores consulta e compara o protocolo selecionado.
+
+Cada perfil tem um mundo criativo plano por versão, em
+`legacy-worlds/1.7.2/classic-flat` e `legacy-worlds/1.7.10/classic-flat`.
+São mundos experimentais com nove blocos na barra, terreno plano e persistência
+de blocos e do jogador.
 
 No cliente de desktop, depois da preparação normal dos recursos do projeto:
 
@@ -24,9 +29,8 @@ horizon-client --protocol-4 --server 127.0.0.1:25565 --name Jogador
 | `--protocol-4` | 1.7.2–1.7.5 | 1.7.2 |
 | `--protocol-5` | 1.7.6–1.7.10 | 1.7.10 |
 
-As versões intermediárias compartilham esses números de protocolo, mas não
-receberam testes individuais nesta alteração. O seletor Android oferece a
-referência 1.7.10; o protocolo 4 está acessível pela CLI.
+As versões intermediárias compartilham esses números de protocolo. Os testes
+individuais de multiplayer cobrem os servidores de referência da tabela.
 
 O nome local funciona em servidores que aceitam perfis offline. Quando um
 servidor exige autenticação, o transporte utiliza a conta já autenticada no
@@ -72,14 +76,13 @@ expansão descomprimida, para a expansão agregada de inventários/chunks
 normalizados e para nomes de jogadores armazenados. Pacotes sem conversão
 implementada não são encaminhados como se fossem de outra versão.
 
-O botão de singleplayer fica desabilitado na seleção 1.7. Os caminhos de
-abertura local também recusam essa seleção, incluindo `--world`,
-`--quickPlaySingleplayer`, benchmark e servidor dedicado. Assim, selecionar
-1.7 não abre o mundo plano 1.8.9 nem o motor de mundos moderno sob outro rótulo.
+A seleção 1.7 permite abrir pelo menu apenas o mundo criativo plano próprio da
+versão. `--world`, `--quickPlaySingleplayer`, benchmarks e servidor dedicado
+continuam reservados ao motor moderno quando se usa um protocolo 1.7.
 
 ## O que ainda falta
 
-- Motor local da 1.7: registros próprios, regras de blocos e itens, receitas,
+- Singleplayer completo da 1.7: registros próprios, regras de blocos e itens, receitas,
   criaturas, combate, redstone, geração de terreno, estruturas e persistência
   com validação histórica. O leitor de regiões existente não implementa essas
   regras por si só.
@@ -101,6 +104,7 @@ cargo test -p horizon-protocol --locked --lib --test legacy18 \
   --test legacy17_limits
 cargo test -p horizon-world --locked --lib nbt::tests
 cargo check -p horizon-client --bin horizon-client --no-default-features --locked
+cargo test -p horizon-client --no-default-features --locked --test legacy_flat_session
 python3 tools/test_legacy17_server.py --version 1.7.2
 python3 tools/test_legacy17_server.py --version 1.7.10
 ```

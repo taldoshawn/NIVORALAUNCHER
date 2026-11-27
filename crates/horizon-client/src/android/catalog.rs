@@ -1,5 +1,6 @@
 //! Mobile launcher state. Browser operations reuse the desktop backend unchanged.
 use crate::browser::{self, Kind, Project, Query, Source, installed::Installed};
+use crate::game_launch::GameVersion;
 use serde::{Deserialize, Serialize};
 use std::io::Read;
 use std::{
@@ -66,8 +67,7 @@ pub struct Config {
     pub proxy: Option<String>,
     pub name: String,
     pub server: String,
-    pub legacy18: bool,
-    pub legacy17: bool,
+    pub(crate) game_version: GameVersion,
     #[serde(skip)]
     pub microsoft_client_id: String,
     pub renderer: RendererMode,
@@ -134,8 +134,7 @@ impl Default for Config {
             proxy: None,
             name: String::new(),
             server: String::new(),
-            legacy18: false,
-            legacy17: false,
+            game_version: GameVersion::Modern,
             microsoft_client_id: String::new(),
             renderer: RendererMode::default(),
             render_scale: crate::display::RenderScale::default(),
@@ -214,13 +213,7 @@ impl Orientation {
 }
 impl Config {
     pub fn game_version_label(&self) -> &'static str {
-        if self.legacy17 {
-            "1.7.10"
-        } else if self.legacy18 {
-            "1.8.9"
-        } else {
-            "26.3"
-        }
+        self.game_version.label()
     }
 
     pub fn load(home: &Path) -> Self {
@@ -229,6 +222,9 @@ impl Config {
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_default();
         let mut config: Self = serde_json::from_value(value.clone()).unwrap_or_default();
+        if value.get("game_version").is_none() {
+            config.game_version = GameVersion::from_previous_config(&value);
+        }
         if cfg!(target_pointer_width = "32") && value.get("renderer").is_none() {
             config.renderer = RendererMode::VulkanCompatibility;
         }
@@ -1088,7 +1084,7 @@ impl Catalog {
         }
         // Include enabled built-in Horizon mods (ANDROID_BUNDLED) in Installed > Mods.
         for &(b_id, b_title, b_desc) in &horizon_client::mod_list::ANDROID_BUNDLED {
-            if horizon_client::mod_list::bundled_visible(b_id, self.config.legacy18) && on.enabled.contains(b_id) && !on.disabled.contains(b_id) {
+            if horizon_client::mod_list::bundled_visible(b_id, self.config.game_version.is_legacy()) && on.enabled.contains(b_id) && !on.disabled.contains(b_id) {
                 let b_file = format!("builtin:{b_id}");
                 if !self.local.iter().any(|item| item.file == b_file) {
                     self.local.push(LocalItem {
@@ -2046,7 +2042,7 @@ impl Catalog {
             let bundled_matches = horizon_client::mod_list::ANDROID_BUNDLED
                 .iter()
                 .filter(|(id, title, _)| {
-                    if !horizon_client::mod_list::bundled_visible(id, self.config.legacy18) { return false; }
+                    if !horizon_client::mod_list::bundled_visible(id, self.config.game_version.is_legacy()) { return false; }
                     let q = self.query.trim().to_lowercase();
                     q.is_empty() || id.contains(&q) || title.to_lowercase().contains(&q)
                 })

@@ -8,13 +8,24 @@ use std::time::{Duration, Instant};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().skip(1).collect();
     let [version, host, port] = args.as_slice() else {
-        return Err("usage: historical_status <1.7.10|1.12.2|1.20.1> <host> <port>".into());
+        return Err("usage: historical_status <version|protocol-number|auto> <host> <port>".into());
     };
     let protocol = match version.as_str() {
-        "1.7.10" => 5,
-        "1.12.2" => 340,
-        "1.20.1" => 763,
-        _ => return Err("unsupported protocol selection".into()),
+        "auto" => None,
+        "1.7.2" | "1.7.3" | "1.7.4" | "1.7.5" => Some(4),
+        "1.7.6" | "1.7.7" | "1.7.8" | "1.7.9" | "1.7.10" => Some(5),
+        "1.8" | "1.8.1" | "1.8.2" | "1.8.3" | "1.8.4" | "1.8.5" | "1.8.6" | "1.8.7" | "1.8.8"
+        | "1.8.9" => Some(47),
+        "1.12.2" => Some(340),
+        "1.20.1" => Some(763),
+        horizon_core::VANILLA_VERSION => Some(horizon_protocol::PROTOCOL_VERSION),
+        number => Some(
+            number
+                .parse::<i32>()
+                .ok()
+                .filter(|&number| number >= 0)
+                .ok_or("use auto or the server's numeric protocol for this version")?,
+        ),
     };
     if host.is_empty() || host.encode_utf16().count() > 255 || host.contains('\0') {
         return Err("invalid server host".into());
@@ -25,7 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     connection.reader.set_read_timeout(Some(timeout))?;
     connection.send(
         &handshake::Serverbound::Intention(handshake::Intention {
-            protocol,
+            protocol: protocol.unwrap_or(-1),
             host: host.clone(),
             port,
             intent: handshake::STATUS,
@@ -55,7 +66,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         serde_json::json!({
             "requested_protocol": protocol,
             "advertised_protocol": advertised,
-            "protocol_matches": advertised == i64::from(protocol),
+            "protocol_matches": protocol.map(|number| advertised == i64::from(number)),
             "ping_ms": started.elapsed().as_millis(),
             "status": json,
         })

@@ -3,7 +3,7 @@ use super::{
     Launcher,
     pages::{Action, button},
 };
-use crate::catalog::RendererMode;
+use crate::{catalog::RendererMode, game_launch::GameVersion};
 use horizon_client::ui_theme::{Face, Ui};
 
 pub(super) enum Kind {
@@ -45,27 +45,24 @@ impl Launcher {
         let (title, help, choices) = match kind {
             Kind::GameVersion => (
                 "Selecionar versão",
-                "1.7.10 oferece multiplayer experimental. Singleplayer 1.7 ainda indisponível. As opções existentes de 1.8.9 e 26.3 continuam disponíveis.",
-                vec![
-                    (
-                        "26.3".into(),
-                        "Mundos locais e multiplayer 26.3".into(),
-                        Action::ChooseGameVersion(false),
-                        !c.legacy18 && !c.legacy17,
-                    ),
-                    (
-                        "1.8.9".into(),
-                        "Criativo plano experimental • multiplayer 1.8–1.8.9".into(),
-                        Action::ChooseGameVersion(true),
-                        c.legacy18 && !c.legacy17,
-                    ),
-                    (
-                        "1.7.10".into(),
-                        "Multiplayer nativo experimental • sem singleplayer 1.7".into(),
-                        Action::ChooseLegacy17,
-                        c.legacy17,
-                    ),
-                ],
+                "Escolha a família do servidor ou um mundo local.",
+                GameVersion::ALL
+                    .into_iter()
+                    .map(|version| {
+                        let detail = match version {
+                            GameVersion::Modern => "Mundos locais e multiplayer 26.3",
+                            GameVersion::Legacy18 => "Criativo plano experimental e multiplayer 1.8–1.8.9",
+                            GameVersion::Legacy17Protocol5 => "Criativo plano experimental e multiplayer 1.7.6–1.7.10",
+                            GameVersion::Legacy17Protocol4 => "Criativo plano experimental e multiplayer 1.7.2–1.7.5",
+                        };
+                        (
+                            version.label().into(),
+                            detail.into(),
+                            Action::ChooseGameVersion(version),
+                            c.game_version == version,
+                        )
+                    })
+                    .collect(),
             ),
             Kind::Aspect => (
                 "Proporção da tela",

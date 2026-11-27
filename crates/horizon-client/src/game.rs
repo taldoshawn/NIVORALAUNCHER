@@ -791,8 +791,8 @@ impl Options {
         {
             return Err(
                 concat!(
-                    "Minecraft 1.7 currently supports multiplayer only; ",
-                    "a historical singleplayer engine is not implemented"
+                    "Minecraft 1.7 supports multiplayer and the classic-flat preview; ",
+                    "named local worlds, benchmarks and dedicated hosting require the modern engine"
                 )
                 .into(),
             );
@@ -11577,7 +11577,7 @@ impl Game<'_> {
                 use horizon_client::clipboard::Clipboard;
                 self.clipboard.set(&text);
             }
-            Action::ClassicFlat189 => self.open_classic_flat_189()?,
+            Action::ClassicFlat17 | Action::ClassicFlat189 => self.open_classic_flat()?,
             Action::Play { folder } => self.open_world(&folder, None, None, false, None)?,
             Action::Create {
                 folder,
@@ -11612,8 +11612,8 @@ impl Game<'_> {
         if self.options.legacy17.is_some() {
             return Err(
                 concat!(
-                    "Singleplayer 1.7 ainda não implementado; ",
-                    "este perfil aceita somente servidores 1.7"
+                    "Este perfil 1.7 aceita servidores e o criativo plano experimental. ",
+                    "Para abrir mundos modernos, selecione a versão do motor."
                 )
                 .into(),
             );
@@ -19131,7 +19131,7 @@ enum LoaderMsg {
 }
 
 enum PendingWorldEntry {
-    ClassicFlat189,
+    ClassicFlat,
     Local {
         folder: String,
         name: Option<String>,
@@ -19228,7 +19228,7 @@ impl Game<'_> {
             self.reload_packs();
         }
         match self.pending_entry.take() {
-            Some(PendingWorldEntry::ClassicFlat189) => self.open_classic_flat_189()?,
+            Some(PendingWorldEntry::ClassicFlat) => self.open_classic_flat()?,
             Some(PendingWorldEntry::Local {
                 folder,
                 name,

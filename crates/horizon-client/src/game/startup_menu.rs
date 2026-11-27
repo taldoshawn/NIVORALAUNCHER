@@ -306,7 +306,7 @@ impl StartupMenu {
     }
     fn queue_entry(&mut self, action: Action, player_name: String) {
         let entry = match action {
-            Action::ClassicFlat189 => PendingWorldEntry::ClassicFlat189,
+            Action::ClassicFlat17 | Action::ClassicFlat189 => PendingWorldEntry::ClassicFlat,
             Action::Play { folder } => PendingWorldEntry::Local {
                 folder,
                 name: None,
