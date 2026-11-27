@@ -1826,7 +1826,7 @@ fn a_finished_optimization_stamps_the_level_data() {
 fn legacy_selection_does_not_enter_modern_local_worlds() {
     let mut f = Fixture::new();
     f.title.legacy18 = true;
-    assert_eq!(f.click("Singleplayer 1.8.9 indisponível"), Action::None);
+    assert_eq!(f.click("Criativo plano 1.8.9 (experimental)"), Action::ClassicFlat189);
     assert!(matches!(f.title.mode, Mode::Main));
     f.title.skip_multiplayer_warning = true;
     f.click("Multiplayer");

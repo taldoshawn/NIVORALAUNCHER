@@ -37,7 +37,7 @@ o multiplayer ainda precisa de conectividade entre os aparelhos.
 | --- | --- |
 | 26.3 | Motor de mundos locais e multiplayer existente |
 | 1.8–1.8.9 | Transporte multiplayer de protocolo 47 experimental |
-| 1.8.9 singleplayer | Não implementado; não abre mundos antigos no motor moderno |
+| 1.8.9 singleplayer | Criativo plano experimental. Um mundo por perfil com nove blocos na barra, terreno plano e posição do jogador salva. Sobrevivência, criaturas e geração normal continuam pendentes. |
 | 1.7.10, 1.12.2, 1.20.1 | Clientes/motores e protocolos ainda não implementados |
 
 A escolha do projeto é manter somente Rust. Executar essas versões de fato

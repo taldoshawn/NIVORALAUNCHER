@@ -744,7 +744,12 @@ impl Game<'_> {
             return Ok(());
         }
         self.join_world_rest()?;
-        if let Err(error) = self.join_server(address, name, None, cookies, lan) {
+        let result = self.join_server(address, name, None, cookies, lan);
+        self.show_connection_error(result)
+    }
+
+    fn show_connection_error(&mut self, result: Result<()>) -> Result<()> {
+        if let Err(error) = result {
             log::warn!("Horizon: could not join server: {error}");
             if self.title.is_none() {
                 self.title = Some(
@@ -757,12 +762,25 @@ impl Game<'_> {
             }
             let skip = self.settings.file.bool("skipMultiplayerWarning");
             if let Some(title) = &mut self.title {
+                title.legacy18 = self.options.legacy18;
                 title.skip_multiplayer_warning = skip;
                 title.failed(error);
             }
             self.capture(false);
         }
         Ok(())
+    }
+    pub(super) fn open_classic_flat_189(&mut self) -> Result<()> {
+        if self.defer_world_entry(super::PendingWorldEntry::ClassicFlat189)? {
+            return Ok(());
+        }
+        self.join_world_rest()?;
+        let directory = std::env::current_dir()?.join("legacy-worlds/1.8.9/classic-flat");
+        let result = (|| {
+            let pipe = horizon_protocol::legacy18::local_flat::open(directory)?;
+            self.join_server("classic-flat-189", &self.options.player_name(), Some(pipe), None, false)
+        })();
+        self.show_connection_error(result)
     }
     /// Join single player's integrated server through memory.
     pub(super) fn connect_local(
@@ -815,6 +833,9 @@ impl Game<'_> {
         );
         self.server_packs_connect(local.is_none().then_some(address), user);
         let session = match local {
+            Some(pipe) if address == "classic-flat-189" => {
+                Session::connect_local_legacy(pipe, name, info.clone(), lang.clone(), root.clone())
+            }
             Some(pipe) => {
                 Session::connect_local(pipe, name, info.clone(), lang.clone(), root.clone())
             }

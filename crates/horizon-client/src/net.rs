@@ -185,6 +185,12 @@ impl Session {
             false,
         )
     }
+    pub fn connect_local_legacy(
+        pipe: horizon_protocol::connection::Pipe, name: &str,
+        info: cfg::ClientInformation, lang: Arc<Language>, resources: PathBuf,
+    ) -> Self {
+        Self::start("local", name, None, info, lang, Some(pipe), None, resources, false, true)
+    }
     pub fn connect_legacy(
         address: &str, name: &str, auth: Option<Arc<AuthSession>>,
         info: cfg::ClientInformation, lang: Arc<Language>, resources: PathBuf,
@@ -223,7 +229,7 @@ impl Session {
             .name("horizon-net".into())
             .spawn(move || {
                 let result = if legacy {
-                    legacy18::run(&address_owned, &name_owned, auth.as_deref(), &lang, &send,
+                    legacy18::run(local, &address_owned, &name_owned, auth.as_deref(), &lang, &send,
                         &thread_writer, &thread_configuring, &thread_counters, &thread_bridge)
                 } else { run(
                     local,

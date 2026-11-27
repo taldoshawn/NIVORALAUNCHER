@@ -11549,6 +11549,7 @@ impl Game<'_> {
                 use horizon_client::clipboard::Clipboard;
                 self.clipboard.set(&text);
             }
+            Action::ClassicFlat189 => self.open_classic_flat_189()?,
             Action::Play { folder } => self.open_world(&folder, None, None, false, None)?,
             Action::Create {
                 folder,
@@ -19092,6 +19093,7 @@ enum LoaderMsg {
 }
 
 enum PendingWorldEntry {
+    ClassicFlat189,
     Local {
         folder: String,
         name: Option<String>,
@@ -19188,6 +19190,7 @@ impl Game<'_> {
             self.reload_packs();
         }
         match self.pending_entry.take() {
+            Some(PendingWorldEntry::ClassicFlat189) => self.open_classic_flat_189()?,
             Some(PendingWorldEntry::Local {
                 folder,
                 name,

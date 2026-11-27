@@ -330,7 +330,7 @@ impl Launcher {
             226.0 * s,
             WHITE,
             if legacy {
-                "Servidores 1.8–1.8.9 • multiplayer experimental"
+                "Criativo plano • servidores 1.8–1.8.9 • experimental"
             } else {
                 "Mundos singleplayer • multiplayer • LAN"
             },
@@ -464,7 +464,7 @@ impl Launcher {
                 "{renderer}   /   Perfil {}   /   {}",
                 self.catalog.config.profile + 1,
                 if legacy {
-                    "Mundos locais 1.8.9 ainda indisponíveis"
+                    "Criativo plano experimental • progresso salvo neste perfil"
                 } else {
                     "Para LAN offline, use um perfil local e a mesma rede Wi-Fi"
                 }

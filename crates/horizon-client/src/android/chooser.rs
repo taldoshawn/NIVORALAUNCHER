@@ -45,7 +45,7 @@ impl Launcher {
         let (title, help, choices) = match kind {
             Kind::GameVersion => (
                 "Selecionar versão",
-                "1.8.9: servidores multiplayer. Mundos locais usam 26.3. Outras versões ainda não estão implementadas.",
+                "1.8.9 inclui criativo plano experimental e servidores. A versão 26.3 inclui o singleplayer completo.",
                 vec![
                     (
                         "26.3".into(),
@@ -55,7 +55,7 @@ impl Launcher {
                     ),
                     (
                         "1.8.9".into(),
-                        "Multiplayer 1.8–1.8.9 • protocolo 47".into(),
+                        "Criativo plano experimental • multiplayer 1.8–1.8.9".into(),
                         Action::ChooseGameVersion(true),
                         c.legacy18,
                     ),

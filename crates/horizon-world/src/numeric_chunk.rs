@@ -180,6 +180,49 @@ impl NumericChunk {
         Ok(())
     }
 
+    /// Recompute direct sky exposure and column heights for the creative flat
+    /// preset's opaque blocks, clear glass and air after a terrain edit.
+    pub fn update_classic_flat_skylight(&mut self) -> io::Result<()> {
+        let level = self.root.tag.get_mut("Level").unwrap();
+        let Some(Tag::List(sections)) = level.get_mut("Sections") else {
+            unreachable!()
+        };
+        let mut order: Vec<_> = (0..sections.len()).collect();
+        order.sort_by_key(|&i| match sections[i].get("Y") {
+            Some(Tag::Byte(y)) => std::cmp::Reverse(*y),
+            _ => unreachable!(),
+        });
+        let mut heights = vec![0i32; 256];
+        for index in order {
+            let section = &mut sections[index];
+            let Some(Tag::Byte(y)) = section.get("Y") else {
+                unreachable!()
+            };
+            let base = i32::from(*y) * 16;
+            let blocks = array(section, "Blocks", 4096)?;
+            let mut sky = vec![0u8; 2048];
+            for (i, &id) in blocks.iter().enumerate().rev() {
+                let column = i % 256;
+                if heights[column] == 0 {
+                    if id == 0 || id == 20 {
+                        sky[i / 2] |= 15 << ((i % 2) * 4);
+                    } else {
+                        heights[column] = base + (i / 256) as i32 + 1;
+                    }
+                }
+            }
+            let Tag::Compound(tags) = section else {
+                unreachable!()
+            };
+            tags.insert("SkyLight".into(), Tag::ByteArray(sky));
+        }
+        let Tag::Compound(tags) = level else {
+            unreachable!()
+        };
+        tags.insert("HeightMap".into(), Tag::IntArray(heights));
+        Ok(())
+    }
+
     pub fn into_nbt(self) -> NamedTag {
         self.root
     }

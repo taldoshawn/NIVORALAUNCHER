@@ -1,0 +1,471 @@
+//! In-process creative classic-flat sandbox. Its region files are isolated from
+//! modern worlds. Only the local player owns the memory channel.
+use crate::{
+    Error, Result,
+    buf::{Reader, Writer},
+    connection::{Connection, Pipe},
+    crypto::{offline_uuid, uuid_string},
+};
+use horizon_core::position::{BlockPos, ChunkPos};
+use horizon_world::{
+    compression::Compression,
+    nbt::{Limits, Tag},
+    numeric_chunk::NumericChunk,
+    region::{ChunkRecord, RegionFile},
+};
+use std::{
+    collections::HashSet,
+    fs, io,
+    path::{Path, PathBuf},
+    time::Instant,
+};
+
+const HOTBAR: [u8; 9] = [1, 3, 4, 5, 20, 45, 24, 22, 42];
+
+pub fn open(directory: PathBuf) -> Result<Pipe> {
+    fs::create_dir_all(directory.join("region"))?;
+    let lock = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(directory.join("session.lock"))?;
+    lock.try_lock()
+        .map_err(|e| Error::new(format!("Could not open classic flat world: {e}")))?;
+    let (client, server) = Pipe::pair();
+    std::thread::Builder::new()
+        .name("nivora-classic-flat".into())
+        .spawn(move || {
+            let _lock = lock;
+            let mut conn = Connection::local(server);
+            if let Err(e) = play(&mut conn, &directory) {
+                let mut kick = packet(0x40);
+                kick.string(&serde_json::json!({"text": e.to_string()}).to_string());
+                let _ = conn.send(&kick.data);
+            }
+        })?;
+    Ok(client)
+}
+
+fn packet(id: i32) -> Writer {
+    let mut w = Writer::new();
+    w.varint(id);
+    w
+}
+fn region(dir: &Path, p: ChunkPos) -> PathBuf {
+    let r = p.region();
+    dir.join("region").join(format!("r.{}.{}.mca", r.x, r.z))
+}
+fn load(dir: &Path, p: ChunkPos) -> Result<NumericChunk> {
+    match RegionFile::open(region(dir, p)) {
+        Ok(mut file) => {
+            if let Some(record) = file.read(p)? {
+                return Ok(NumericChunk::new(record.nbt(Limits::default())?)?);
+            }
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.into()),
+    }
+    Ok(NumericChunk::classic_flat_189(p))
+}
+fn section_bytes<'a>(tag: &'a Tag, name: &str, len: usize) -> Result<&'a [u8]> {
+    match tag.get(name) {
+        Some(Tag::ByteArray(bytes)) if bytes.len() == len => Ok(bytes),
+        _ => Err(Error::new(format!("Invalid saved chunk field {name}"))),
+    }
+}
+fn send_column(conn: &mut Connection, dir: &Path, p: ChunkPos) -> Result<()> {
+    let root = load(dir, p)?.into_nbt();
+    let level = root.tag.get("Level").unwrap();
+    let Some(Tag::List(sections)) = level.get("Sections") else {
+        unreachable!()
+    };
+    let mut ordered = [None; 16];
+    let mut mask = 0u16;
+    for s in sections {
+        let Some(Tag::Byte(y)) = s.get("Y") else {
+            unreachable!()
+        };
+        ordered[*y as usize] = Some(s);
+        mask |= 1 << *y;
+    }
+    let mut bytes = Vec::with_capacity(sections.len() * 12288 + 256);
+    for s in ordered.iter().flatten() {
+        let blocks = section_bytes(s, "Blocks", 4096)?;
+        let meta = section_bytes(s, "Data", 2048)?;
+        let add = if s.get("Add").is_some() {
+            Some(section_bytes(s, "Add", 2048)?)
+        } else {
+            None
+        };
+        for (i, id) in blocks.iter().enumerate() {
+            let shift = (i % 2) * 4;
+            let high = add.map_or(0, |a| (a[i / 2] >> shift) & 15);
+            let state = (u16::from(high) << 12)
+                | (u16::from(*id) << 4)
+                | u16::from((meta[i / 2] >> shift) & 15);
+            bytes.extend_from_slice(&state.to_le_bytes());
+        }
+    }
+    for field in ["BlockLight", "SkyLight"] {
+        for s in ordered.iter().flatten() {
+            bytes.extend_from_slice(section_bytes(s, field, 2048)?);
+        }
+    }
+    bytes.extend_from_slice(section_bytes(level, "Biomes", 256)?);
+    let mut w = packet(0x21);
+    w.i32(p.x);
+    w.i32(p.z);
+    w.bool(true);
+    w.u16(mask);
+    w.byte_array(&bytes);
+    conn.send(&w.data)
+}
+fn stream(
+    conn: &mut Connection,
+    dir: &Path,
+    center: ChunkPos,
+    radius: i32,
+    loaded: &mut HashSet<ChunkPos>,
+) -> Result<()> {
+    let mut next = HashSet::new();
+    for z in -radius..=radius {
+        for x in -radius..=radius {
+            next.insert(ChunkPos::new(center.x + x, center.z + z));
+        }
+    }
+    for p in loaded.difference(&next) {
+        let mut w = packet(0x21);
+        w.i32(p.x);
+        w.i32(p.z);
+        w.bool(true);
+        w.u16(0);
+        w.byte_array(&[]);
+        conn.send(&w.data)?;
+    }
+    let mut missing: Vec<_> = next.difference(loaded).copied().collect();
+    missing.sort_unstable_by_key(|p| (p.x - center.x).pow(2) + (p.z - center.z).pow(2));
+    for p in missing {
+        send_column(conn, dir, p)?;
+    }
+    *loaded = next;
+    Ok(())
+}
+fn update(conn: &mut Connection, dir: &Path, pos: BlockPos, id: u8) -> Result<()> {
+    let p = pos.chunk();
+    let mut chunk = load(dir, p)?;
+    if chunk.block(pos)? == (u16::from(id), 0) {
+        return Ok(());
+    }
+    chunk.set_block(pos, u16::from(id), 0)?;
+    chunk.update_classic_flat_skylight()?;
+    let record = ChunkRecord::from_nbt(&chunk.into_nbt(), Compression::Zlib, 0, Limits::default())?;
+    let mut file = RegionFile::open_writable(region(dir, p), true)?;
+    file.write(p, &record)?;
+    file.sync()?;
+    let mut w = packet(0x23);
+    w.i64(super::actions::block_position(pos.x, pos.y, pos.z)? as i64);
+    w.varint(i32::from(id) << 4);
+    conn.send(&w.data)?;
+    send_column(conn, dir, p)
+}
+fn unpack(r: &mut Reader<'_>) -> Result<BlockPos> {
+    let v = r.i64()?;
+    Ok(BlockPos::new(
+        (v >> 38) as i32,
+        ((v >> 26) & 4095) as i32,
+        ((v << 38) >> 38) as i32,
+    ))
+}
+
+fn valid_pose(p: &[f64; 5]) -> bool {
+    p.iter().all(|n| n.is_finite())
+        && p[0].abs() < 30_000_000.
+        && p[2].abs() < 30_000_000.
+        && (-64.0..=4096.0).contains(&p[1])
+        && p[4].abs() <= 90.0
+}
+
+fn read_pose(dir: &Path) -> Result<[f64; 5]> {
+    match fs::read(dir.join("player.json")) {
+        Ok(bytes) => serde_json::from_slice::<[f64; 5]>(&bytes)
+            .ok()
+            .filter(valid_pose)
+            .ok_or_else(|| Error::new("Invalid saved classic-flat player position")),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok([0.5, 4.0, 0.5, 0., 0.]),
+        Err(e) => Err(e.into()),
+    }
+}
+
+fn save_pose(dir: &Path, pose: &[f64; 5]) -> Result<()> {
+    use std::io::Write;
+    let tmp = dir.join("player.json.tmp");
+    let mut f = fs::File::create(&tmp)?;
+    serde_json::to_writer(&mut f, pose).map_err(|e| Error::new(e.to_string()))?;
+    f.flush()?;
+    f.sync_all()?;
+    drop(f);
+    fs::rename(tmp, dir.join("player.json"))?;
+    Ok(())
+}
+
+fn teleport(conn: &mut Connection, pose: [f64; 5]) -> Result<()> {
+    let mut w = packet(8);
+    for coord in &pose[..3] {
+        w.f64(*coord);
+    }
+    w.f32(pose[3] as f32);
+    w.f32(pose[4] as f32);
+    w.u8(0);
+    conn.send(&w.data)
+}
+
+fn play(conn: &mut Connection, dir: &Path) -> Result<()> {
+    let (id, body) = conn.recv()?;
+    let mut r = Reader::new(&body);
+    if id != 0 || r.varint()? != 47 {
+        return Err(Error::new("Expected protocol 47 handshake"));
+    }
+    r.string(255)?;
+    r.u16()?;
+    if r.varint()? != 2 {
+        return Err(Error::new("Expected login intention"));
+    }
+    let (id, body) = conn.recv()?;
+    let name = Reader::new(&body).string(16)?;
+    if id != 0 {
+        return Err(Error::new("Expected login start"));
+    }
+    let mut w = packet(2);
+    w.string(&uuid_string(offline_uuid(&name)));
+    w.string(&name);
+    conn.send(&w.data)?;
+    let mut w = packet(1);
+    w.i32(1);
+    w.u8(1);
+    w.i8(0);
+    w.u8(0);
+    w.u8(1);
+    w.string("flat");
+    w.bool(false);
+    conn.send(&w.data)?;
+    let mut w = packet(0x39);
+    w.u8(13);
+    w.f32(0.05);
+    w.f32(0.1);
+    conn.send(&w.data)?;
+    let mut w = packet(3);
+    w.i64(0);
+    w.i64(6000);
+    conn.send(&w.data)?;
+    let mut pose = read_pose(dir)?;
+    let mut saved_pose = pose;
+    teleport(conn, pose)?;
+    for (i, id) in HOTBAR.iter().enumerate() {
+        let mut w = packet(0x2f);
+        w.u8(0);
+        w.i16(36 + i as i16);
+        w.i16(i16::from(*id));
+        w.i8(64);
+        w.i16(0);
+        w.u8(0);
+        conn.send(&w.data)?;
+    }
+    let mut held = 0usize;
+    let mut center = BlockPos::new(pose[0].floor() as i32, 0, pose[2].floor() as i32).chunk();
+    let mut loaded = HashSet::new();
+    let mut radius = 2;
+    stream(conn, dir, center, radius, &mut loaded)?;
+    let mut keep_alive = Instant::now();
+    let session = (|| -> Result<()> {
+        loop {
+            let (id, body) = conn.recv()?;
+            let mut r = Reader::new(&body);
+            match id {
+                4..=6 => {
+                    let mut moved = pose;
+                    if id != 5 {
+                        for c in &mut moved[..3] {
+                            *c = r.f64()?;
+                        }
+                    }
+                    if id != 4 {
+                        moved[3] = f64::from(r.f32()?);
+                        moved[4] = f64::from(r.f32()?);
+                    }
+                    if moved[1] < -32.0 {
+                        moved = [0.5, 6.0, 0.5, 0., 0.];
+                        teleport(conn, moved)?;
+                    }
+                    if valid_pose(&moved) {
+                        pose = moved;
+                        let next = BlockPos::new(pose[0].floor() as i32, 0, pose[2].floor() as i32)
+                            .chunk();
+                        if next != center {
+                            stream(conn, dir, next, radius, &mut loaded)?;
+                            center = next;
+                        }
+                    }
+                }
+                0x15 => {
+                    r.string(7)?;
+                    // Bound this in-memory preview's pending columns on small phones.
+                    let requested = i32::from(r.i8()?).clamp(2, 8);
+                    if requested != radius {
+                        radius = requested;
+                        stream(conn, dir, center, radius, &mut loaded)?;
+                    }
+                }
+                7 => {
+                    let action = r.u8()?;
+                    let p = unpack(&mut r)?;
+                    if action == 0 && p.y < 256 && loaded.contains(&p.chunk()) {
+                        update(conn, dir, p, 0)?;
+                    }
+                }
+                8 => {
+                    let p = unpack(&mut r)?;
+                    let face = r.u8()?;
+                    if let Some(&(x, y, z)) = [
+                        (0, -1, 0),
+                        (0, 1, 0),
+                        (0, 0, -1),
+                        (0, 0, 1),
+                        (-1, 0, 0),
+                        (1, 0, 0),
+                    ]
+                    .get(face as usize)
+                    {
+                        let pos = p.offset(x, y, z);
+                        if (0..256).contains(&pos.y) && loaded.contains(&pos.chunk()) {
+                            update(conn, dir, pos, HOTBAR[held])?;
+                        }
+                    }
+                }
+                9 => {
+                    let slot = r.i16()?;
+                    if (0..9).contains(&slot) {
+                        held = slot as usize;
+                    }
+                }
+                _ => {}
+            }
+            if keep_alive.elapsed().as_secs() >= 10 {
+                if saved_pose != pose {
+                    save_pose(dir, &pose)?;
+                    saved_pose = pose;
+                }
+                let mut w = packet(0);
+                w.varint(1);
+                conn.send(&w.data)?;
+                keep_alive = Instant::now();
+            }
+        }
+    })();
+    if saved_pose != pose {
+        save_pose(dir, &pose)?;
+    }
+    session
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::legacy18::{chunk::Column, login, play::Packet};
+    use std::time::Duration;
+
+    #[test]
+    fn play_edit_walk_disconnect_and_reopen_through_the_memory_protocol() {
+        let mut suffix = [0; 8];
+        getrandom::fill(&mut suffix).unwrap();
+        let dir =
+            std::env::temp_dir().join(format!("nivora-classic-{}", u64::from_le_bytes(suffix)));
+        let connect = || {
+            let pipe = open(dir.clone()).unwrap();
+            let (c, _) = login(
+                Connection::local(pipe),
+                "local",
+                0,
+                "Alex",
+                Duration::from_secs(3),
+                |_| panic!("local authentication request"),
+            )
+            .unwrap();
+            c.reader
+                .set_read_timeout(Some(Duration::from_secs(3)))
+                .unwrap();
+            c
+        };
+        let mut c = connect();
+        assert!(open(dir.clone()).is_err());
+        let mut columns = 0;
+        while columns < 25 {
+            let (id, bytes) = c.recv().unwrap();
+            if id == 0x21 {
+                let col = Column::decode(&bytes, true).unwrap();
+                assert_eq!(col.section(0).unwrap().state(1, 3, 1), Some(2 << 4));
+                columns += 1;
+            }
+        }
+        let mut pos = packet(4);
+        pos.f64(16.5);
+        pos.f64(4.0);
+        pos.f64(0.5);
+        pos.bool(true);
+        c.send(&pos.data).unwrap();
+        let mut w = packet(8);
+        w.i64(super::super::actions::block_position(16, 3, 0).unwrap() as i64);
+        w.u8(1);
+        w.i16(-1);
+        w.bytes(&[8, 15, 8]);
+        c.send(&w.data).unwrap();
+        loop {
+            let (id, b) = c.recv().unwrap();
+            if id == 0x23 {
+                assert_eq!(
+                    Packet::decode(id, &b).unwrap(),
+                    Packet::BlockChange {
+                        x: 16,
+                        y: 4,
+                        z: 0,
+                        state: 16
+                    }
+                );
+                break;
+            }
+        }
+        drop(c);
+        let until = Instant::now() + Duration::from_secs(3);
+        let lock = fs::OpenOptions::new()
+            .write(true)
+            .open(dir.join("session.lock"))
+            .unwrap();
+        while lock.try_lock().is_err() {
+            assert!(
+                Instant::now() < until,
+                "world did not close after disconnect"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        drop(lock);
+        let mut c = connect();
+        let mut restored = false;
+        loop {
+            let (id, b) = c.recv().unwrap();
+            if id == 8 {
+                let mut r = Reader::new(&b);
+                assert_eq!(r.f64().unwrap(), 16.5);
+                restored = true;
+            }
+            if id == 0x21 {
+                let col = Column::decode(&b, true).unwrap();
+                if (col.x, col.z) == (1, 0) {
+                    assert_eq!(col.section(0).unwrap().state(0, 4, 0), Some(16));
+                    break;
+                }
+            }
+        }
+        assert!(restored);
+        drop(c);
+        fs::remove_dir_all(dir).unwrap();
+    }
+}

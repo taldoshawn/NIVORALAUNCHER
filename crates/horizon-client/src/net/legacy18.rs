@@ -22,6 +22,7 @@ fn legacy_transport_error(
 }
 
 pub(super) fn run(
+    local: Option<horizon_protocol::connection::Pipe>,
     address: &str,
     name: &str,
     auth: Option<&AuthSession>,
@@ -32,11 +33,13 @@ pub(super) fn run(
     counters: &Mutex<Option<Arc<Counters>>>,
     bridge: &Mutex<Outbound>,
 ) -> Result<Reason, Reason> {
-    let (host, port) =
-        parse_address(address).ok_or_else(|| Reason::plain("Invalid server address"))?;
     status(send, &tr(lang, "connect.connecting"));
-    let (connection, host, port) =
-        connect_tcp(&host, port, false, READ_TIMEOUT).map_err(Reason::plain)?;
+    let (connection, host, port) = if let Some(pipe) = local {
+        (Connection::local(pipe), "local".to_owned(), 0)
+    } else {
+        let (host, port) = parse_address(address).ok_or_else(|| Reason::plain("Invalid server address"))?;
+        connect_tcp(&host, port, false, READ_TIMEOUT).map_err(Reason::plain)?
+    };
     *counters.lock().unwrap() = Some(connection.reader.counters.clone());
     status(send, "Logging in to Minecraft 1.8.9...");
     let outcome = legacy18::login_outcome(connection, &host, port, name, READ_TIMEOUT, |hash| {

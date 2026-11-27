@@ -506,7 +506,7 @@ impl Launcher {
                 self.launching = true;
                 self.error = None;
                 self.catalog.status = if self.catalog.config.legacy18 {
-                    "Starting Minecraft (1.8.9 server compatibility)..."
+                    "Abrindo Minecraft 1.8.9 experimental…"
                 } else {
                     "Starting Minecraft 26.3..."
                 }.into();
