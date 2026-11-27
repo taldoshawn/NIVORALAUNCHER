@@ -763,6 +763,7 @@ impl Game<'_> {
             let skip = self.settings.file.bool("skipMultiplayerWarning");
             if let Some(title) = &mut self.title {
                 title.legacy18 = self.options.legacy18;
+                title.legacy17 = self.options.legacy17;
                 title.skip_multiplayer_warning = skip;
                 title.failed(error);
             }
@@ -771,6 +772,11 @@ impl Game<'_> {
         Ok(())
     }
     pub(super) fn open_classic_flat_189(&mut self) -> Result<()> {
+        if self.options.legacy17.is_some() {
+            return self.show_connection_error(Err(
+                "Singleplayer 1.7 ainda não implementado. Selecione Multiplayer.".into(),
+            ));
+        }
         if self.defer_world_entry(super::PendingWorldEntry::ClassicFlat189)? {
             return Ok(());
         }
@@ -851,6 +857,17 @@ impl Game<'_> {
                         cookies,
                         root.clone(),
                     ),
+                    None if self.options.legacy17.is_some() => {
+                        Session::connect_legacy17(
+                            self.options.legacy17.unwrap(),
+                            address,
+                            name,
+                            auth.clone(),
+                            info.clone(),
+                            lang.clone(),
+                            root.clone(),
+                        )
+                    }
                     None => {
                         let connect = if self.options.legacy18 {
                             Session::connect_legacy
@@ -1172,6 +1189,7 @@ impl Game<'_> {
         let mut title = horizon_client::title::Title::new(saves.clone(), &self.options.resources)
             .with_user(|| self.options.player_name());
         title.legacy18 = self.options.legacy18;
+        title.legacy17 = self.options.legacy17;
         title.last_server = self.settings.file.string("lastServer");
         title.skip_multiplayer_warning = self.settings.file.bool("skipMultiplayerWarning");
         if single_player && reason.is_none() {
@@ -1184,7 +1202,7 @@ impl Game<'_> {
                 reason,
                 retry: None,
             },
-            None => horizon_client::multiplayer::Screen::list(&saves),
+            None => title.multiplayer_list(),
         });
         self.title = Some(title);
         self.capture(false);
@@ -1810,7 +1828,12 @@ impl Game<'_> {
             match event {
                 Event::LegacyPacket { id, payload } => {
                     if let Err(error) = self.handle_legacy_packet(id, &payload) {
-                        self.leave_server(Some(format!("1.8.9 packet {id:#x}: {error}")))?;
+                        let version = if self.options.legacy17.is_some() {
+                            "1.7"
+                        } else {
+                            "1.8.9"
+                        };
+                        self.leave_server(Some(format!("{version} packet {id:#x}: {error}")))?;
                         return Ok(());
                     }
                 }

@@ -6,6 +6,7 @@
 //! Online-mode servers need the Microsoft account the launcher signed in
 //! (crate::auth): the login joins the server through the session service and
 //! encrypts the connection (ClientHandshakePacketListenerImpl.handleHello).
+mod legacy17;
 mod legacy18;
 use crate::auth::AuthSession;
 use horizon_protocol::{
@@ -98,6 +99,7 @@ pub enum Event {
 
 pub struct Session {
     legacy: bool,
+    legacy17: Option<horizon_protocol::legacy17::Version>,
     legacy_bridge: Arc<Mutex<horizon_protocol::legacy18::bridge::Outbound>>,
     events: Receiver<Event>,
     writer: Arc<Mutex<Option<ConnWriter>>>,
@@ -124,7 +126,7 @@ impl Session {
         resources: PathBuf,
     ) -> Self {
         Self::start(
-            address, name, auth, info, lang, None, None, resources, false, false,
+            address, name, auth, info, lang, None, None, resources, false, false, None,
         )
     }
     /// `ClientHandshakePacketListenerImpl.handleHello`: LAN entries can continue
@@ -138,7 +140,9 @@ impl Session {
         lang: Arc<Language>,
         resources: PathBuf,
     ) -> Self {
-        Self::start(address, name, auth, info, lang, None, None, resources, true, false)
+        Self::start(
+            address, name, auth, info, lang, None, None, resources, true, false, None,
+        )
     }
     /// `ConnectScreen.startConnecting` for a `transfer`: the cookies the
     /// server stored carry to the new connection (`TransferState`).
@@ -162,6 +166,7 @@ impl Session {
             resources,
             false,
             false,
+            None,
         )
     }
     /// Join an integrated server through memory (`Connection.connectToLocalServer`).
@@ -183,19 +188,38 @@ impl Session {
             resources,
             false,
             false,
+            None,
         )
     }
     pub fn connect_local_legacy(
         pipe: horizon_protocol::connection::Pipe, name: &str,
         info: cfg::ClientInformation, lang: Arc<Language>, resources: PathBuf,
     ) -> Self {
-        Self::start("local", name, None, info, lang, Some(pipe), None, resources, false, true)
+        Self::start(
+            "local", name, None, info, lang, Some(pipe), None, resources, false, true, None,
+        )
     }
     pub fn connect_legacy(
         address: &str, name: &str, auth: Option<Arc<AuthSession>>,
         info: cfg::ClientInformation, lang: Arc<Language>, resources: PathBuf,
     ) -> Self {
-        Self::start(address, name, auth, info, lang, None, None, resources, false, true)
+        Self::start(
+            address, name, auth, info, lang, None, None, resources, false, true, None,
+        )
+    }
+    /// Join a protocol 4/5 server using native 1.7 login and packet codecs.
+    pub fn connect_legacy17(
+        version: horizon_protocol::legacy17::Version,
+        address: &str,
+        name: &str,
+        auth: Option<Arc<AuthSession>>,
+        info: cfg::ClientInformation,
+        lang: Arc<Language>,
+        resources: PathBuf,
+    ) -> Self {
+        Self::start(
+            address, name, auth, info, lang, None, None, resources, false, true, Some(version),
+        )
     }
     pub fn is_legacy(&self) -> bool { self.legacy }
 
@@ -210,6 +234,7 @@ impl Session {
         resources: PathBuf,
         lan: bool,
         legacy: bool,
+        legacy17: Option<horizon_protocol::legacy17::Version>,
     ) -> Self {
         let legacy_bridge = Arc::new(Mutex::new(horizon_protocol::legacy18::bridge::Outbound::default()));
         let thread_bridge = legacy_bridge.clone();
@@ -228,7 +253,20 @@ impl Session {
         let thread = std::thread::Builder::new()
             .name("horizon-net".into())
             .spawn(move || {
-                let result = if legacy {
+                let result = if let Some(version) = legacy17 {
+                    legacy17::run(
+                        version,
+                        &address_owned,
+                        &name_owned,
+                        auth.as_deref(),
+                        &lang,
+                        &send,
+                        &thread_writer,
+                        &thread_configuring,
+                        &thread_counters,
+                        &thread_bridge,
+                    )
+                } else if legacy {
                     legacy18::run(local, &address_owned, &name_owned, auth.as_deref(), &lang, &send,
                         &thread_writer, &thread_configuring, &thread_counters, &thread_bridge)
                 } else { run(
@@ -262,6 +300,7 @@ impl Session {
         let debug = std::env::var_os("HORIZON_NET_DEBUG").is_some();
         Self {
             legacy,
+            legacy17,
             legacy_bridge,
             events,
             writer,
@@ -300,7 +339,19 @@ impl Session {
             return;
         }
         let bytes = if self.legacy {
-            match self.legacy_bridge.lock().unwrap().encode(&packet) {
+            let mut bridge = self.legacy_bridge.lock().unwrap();
+            let encoded = bridge.encode(&packet).and_then(|bytes| {
+                bytes
+                    .map(|bytes| {
+                        if self.legacy17.is_some() {
+                            horizon_protocol::legacy17::bridge::outgoing(&bytes, bridge.entity)
+                        } else {
+                            Ok(bytes)
+                        }
+                    })
+                    .transpose()
+            });
+            match encoded {
                 Ok(Some(bytes)) => bytes,
                 Ok(None) => return,
                 Err(error) => { log::warn!("Legacy action not sent: {error}: {packet:?}"); return; }
@@ -314,6 +365,9 @@ impl Session {
     }
     /// ServerboundResourcePackPacket, in whichever phase the connection is.
     pub fn send_pack_status(&self, id: u128, action: i32) {
+        if self.legacy17.is_some() {
+            return;
+        }
         let status = cfg::ResourcePackResponse { id, action };
         let mut writer = self.writer.lock().unwrap();
         let body = if self.configuring.load(Ordering::Relaxed) {
@@ -330,6 +384,9 @@ impl Session {
     /// ServerboundCustomClickActionPacket (a dialog's answer), in whichever
     /// phase the connection is.
     pub fn send_custom_click(&self, id: &str, payload: Option<horizon_world::nbt::Tag>) {
+        if self.legacy17.is_some() {
+            return;
+        }
         let click = cfg::CustomClickAction {
             id: id.to_owned(),
             payload,
@@ -348,6 +405,9 @@ impl Session {
     }
     /// ServerboundAcceptCodeOfConductPacket, sent in configuration.
     pub fn accept_code_of_conduct(&self) {
+        if self.legacy17.is_some() {
+            return;
+        }
         let mut writer = self.writer.lock().unwrap();
         if let Some(w) = writer.as_mut()
             && w.send(&cfg::Serverbound::AcceptCodeOfConduct(Empty).encode())
@@ -984,6 +1044,16 @@ pub fn load_language(resources: &std::path::Path) -> Language {
 /// Ask a server for its status (ServerStatusPinger): MOTD, players and the
 /// round trip time in milliseconds.
 pub fn ping(address: &str, timeout: Duration) -> Result<(serde_json::Value, u128), String> {
+    ping_with_protocol(address, timeout, PROTOCOL_VERSION)
+}
+
+/// Status queries advertise the selected protocol so a proxy can return the
+/// appropriate historical status instead of the default game's response.
+pub fn ping_with_protocol(
+    address: &str,
+    timeout: Duration,
+    protocol: i32,
+) -> Result<(serde_json::Value, u128), String> {
     use horizon_protocol::packets::status;
     let (host, port) = parse_address(address).ok_or("Invalid address")?;
     let mut c = Connection::connect_server(&host, port, timeout).map_err(|e| e.to_string())?;
@@ -993,7 +1063,7 @@ pub fn ping(address: &str, timeout: Duration) -> Result<(serde_json::Value, u128
     let e = |e: horizon_protocol::Error| e.to_string();
     c.send(
         &handshake::Serverbound::Intention(handshake::Intention {
-            protocol: PROTOCOL_VERSION,
+            protocol,
             host: host.clone(),
             port,
             intent: handshake::STATUS,
@@ -1319,6 +1389,9 @@ mod tests {
                 let _ = finished.send(());
             });
             let mut session = Session {
+                legacy: false,
+                legacy17: None,
+                legacy_bridge: Default::default(),
                 events,
                 writer: writer.clone(),
                 configuring: Arc::new(AtomicBool::new(false)),
@@ -1418,6 +1491,9 @@ mod tests {
         let (mut reader, writer) = Connection::local(client).split();
         let (send, events) = channel();
         let session = Session {
+            legacy: false,
+            legacy17: None,
+            legacy_bridge: Default::default(),
             events,
             writer: Arc::new(Mutex::new(Some(writer))),
             configuring: Arc::new(AtomicBool::new(false)),

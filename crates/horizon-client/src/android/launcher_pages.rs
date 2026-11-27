@@ -400,6 +400,7 @@ pub(super) enum Action {
     // Controls & Control Editor actions
     GameVersion,
     ChooseGameVersion(bool),
+    ChooseLegacy17,
     KeyboardControlPreset,
     PojavControlPreset,
     OpenControlEditor,
@@ -1397,7 +1398,7 @@ impl Launcher {
                     };
                 let paused = self.install_paused.load(Ordering::Relaxed);
                 self.install_transfer.observe(done_mib, paused);
-                let selected = if self.catalog.config.legacy18 { "1.8.9" } else { "26.3" };
+                let selected = self.catalog.config.game_version_label();
                 let sub_left = format!("Servidor {selected} • Perfil {}", self.catalog.config.profile + 1);
                 let sub_right = format!(
                     "{done_mib:.1} / {total_mib:.1} MiB ({:.0}%)",
@@ -1440,7 +1441,7 @@ impl Launcher {
                 ui.rounded(content_x, top, content_w, hero_h, 20.0, color::hex(0x171522, 255));
                 ui.border(content_x, top, content_w, hero_h, 20.0, my3_border());
                 ui.text(Face::Medium, 11.0, content_x + 22.0, top + 22.0, my3_muted(), "M I N E C R A F T   J A V A");
-                let selected = if self.catalog.config.legacy18 { "1.8.9" } else { "26.3" };
+                let selected = self.catalog.config.game_version_label();
                 let title = format!("Minecraft {selected}");
                 let title = ui.fit_text(Face::SemiBold, 28.0, &title, content_w - 44.0);
                 ui.text(Face::SemiBold, 28.0, content_x + 22.0, top + 44.0, my3_text(), &title);
@@ -7431,6 +7432,14 @@ impl Launcher {
             Some(Action::GameVersion) => self.open_chooser(chooser::Kind::GameVersion),
             Some(Action::ChooseGameVersion(legacy)) => {
                 self.catalog.config.legacy18 = legacy;
+                self.catalog.config.legacy17 = false;
+                self.catalog.config.save(&self.home)?;
+                self.chooser = None;
+                self.catalog.refresh(&self.home);
+            }
+            Some(Action::ChooseLegacy17) => {
+                self.catalog.config.legacy17 = true;
+                self.catalog.config.legacy18 = true;
                 self.catalog.config.save(&self.home)?;
                 self.chooser = None;
                 self.catalog.refresh(&self.home);

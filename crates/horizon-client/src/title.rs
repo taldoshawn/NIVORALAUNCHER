@@ -384,8 +384,9 @@ pub enum Action {
     },
 }
 pub struct Title {
-    /// Legacy protocol selection; local worlds are unavailable in this mode.
+    /// Legacy rendering and prediction; available local modes depend on the version.
     pub legacy18: bool,
+    pub legacy17: Option<horizon_protocol::legacy17::Version>,
     pub mode: Mode,
     /// Direct Connection's address, synchronized with `options.txt`'s `lastServer`.
     pub last_server: String,
@@ -692,6 +693,7 @@ impl Title {
             credits_button: Cell::new([0.0; 4]),
             allows_multiplayer: true,
             legacy18: false,
+            legacy17: None,
             ban_queue: Default::default(),
             ban_buttons: Cell::new([(0.0, 0.0); 3]),
             backup: None,
@@ -1582,8 +1584,14 @@ impl Title {
                         cx - 100.0,
                         y,
                         200.0,
-                        &if self.legacy18 { "Criativo plano 1.8.9 (experimental)".into() } else { lang::get_or("menu.singleplayer", "Singleplayer") },
-                        true,
+                        &if self.legacy17.is_some() {
+                            "Singleplayer 1.7 indisponível".into()
+                        } else if self.legacy18 {
+                            "Criativo plano 1.8.9 (experimental)".into()
+                        } else {
+                            lang::get_or("menu.singleplayer", "Singleplayer")
+                        },
+                        self.legacy17.is_none(),
                         1,
                     ),
                     b(
@@ -2335,10 +2343,23 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
                 #[cfg(target_os = "android")]
                 let version = format!(
                     "Pojav Rust · {}",
-                    if self.legacy18 { "1.8.9 experimental" } else { horizon_core::VANILLA_VERSION }
+                    if self.legacy17.is_some() {
+                        "1.7 multiplayer experimental"
+                    } else if self.legacy18 {
+                        "1.8.9 experimental"
+                    } else {
+                        horizon_core::VANILLA_VERSION
+                    }
                 );
                 #[cfg(not(target_os = "android"))]
-                let version = format!("Horizon {} (Rust)", horizon_core::VANILLA_VERSION);
+                let version = format!(
+                    "Horizon {} (Rust)",
+                    if self.legacy17.is_some() {
+                        "1.7 multiplayer experimental"
+                    } else {
+                        horizon_core::VANILLA_VERSION
+                    }
+                );
                 batch.text(atlas, &version, 2.0, h - 10.0, u32::MAX, true);
                 // A nightly names its build in the top-left corner, the one spot no button reaches at any GUI
                 // scale, so screenshots and reports say which build they come from.
@@ -3184,6 +3205,7 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
     }
     fn click_action(&mut self, x: f32, y: f32, (w, h): (f32, f32), hit: Option<u8>) -> Action {
         match (&mut self.mode, hit) {
+            (Mode::Main, Some(1)) if self.legacy17.is_some() => Action::None,
             (Mode::Main, Some(1)) if self.legacy18 => Action::ClassicFlat189,
             (Mode::Main, Some(1)) => {
                 // The title button is no longer part of the world-select screen.
@@ -3207,7 +3229,7 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
             (Mode::Main, Some(4)) => {
                 // TitleScreen.init: SafetyScreen first, unless it was turned off.
                 self.mode = if self.skip_multiplayer_warning {
-                    Mode::Multiplayer(crate::multiplayer::Screen::list(&self.saves))
+                    Mode::Multiplayer(self.multiplayer_list())
                 } else {
                     Mode::MultiplayerWarning { check: false }
                 };
@@ -3218,7 +3240,7 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
                 if *check {
                     self.skip_multiplayer_warning = true;
                 }
-                self.mode = Mode::Multiplayer(crate::multiplayer::Screen::list(&self.saves));
+                self.mode = Mode::Multiplayer(self.multiplayer_list());
                 Action::None
             }
             (Mode::MultiplayerWarning { .. }, Some(71)) => {
@@ -4015,6 +4037,17 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
             self.last_server.clone_from(address);
         }
     }
+    fn multiplayer_protocol(&self) -> i32 {
+        self.legacy17
+            .map_or(horizon_protocol::PROTOCOL_VERSION, |version| {
+                version.protocol()
+            })
+    }
+    /// Keep the selected historical protocol when entering or returning to
+    /// the server list. Other profiles retain their existing status behavior.
+    pub fn multiplayer_list(&self) -> crate::multiplayer::Screen {
+        crate::multiplayer::Screen::list_with_protocol(&self.saves, self.multiplayer_protocol())
+    }
     pub(crate) fn multiplayer_click(
         &mut self,
         hit: Option<u8>,
@@ -4022,10 +4055,11 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
         y: f32,
         size: (f32, f32),
     ) -> crate::multiplayer::Outcome {
+        let protocol = self.multiplayer_protocol();
         let Mode::Multiplayer(screen) = &mut self.mode else {
             return crate::multiplayer::Outcome::None;
         };
-        let outcome = screen.click(hit, x, y, size, &self.saves);
+        let outcome = screen.click_with_protocol(hit, x, y, size, &self.saves, protocol);
         if hit == Some(41)
             && let crate::multiplayer::Screen::Direct { address } = screen
         {
@@ -4226,8 +4260,9 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
             return;
         }
         self.remember_direct_address();
+        let protocol = self.multiplayer_protocol();
         if let Mode::Multiplayer(screen) = &mut self.mode
-            && !screen.escape(&self.saves)
+            && !screen.escape_with_protocol(&self.saves, protocol)
         {
             return;
         }
@@ -4273,9 +4308,10 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
     /// `JoinMultiplayerScreen.keyPressed`: F5 refreshes the server list as
     /// Refresh does (`refreshServerList`).
     pub fn refresh_servers(&mut self) {
+        let protocol = self.multiplayer_protocol();
         if let Mode::Multiplayer(screen @ crate::multiplayer::Screen::List { .. }) = &mut self.mode
         {
-            *screen = crate::multiplayer::Screen::list(&self.saves);
+            *screen = crate::multiplayer::Screen::list_with_protocol(&self.saves, protocol);
         }
     }
 }

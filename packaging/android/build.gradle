@@ -14,6 +14,7 @@ android {
     defaultConfig {
         buildConfigField "boolean", "VERIFY_OFFICIAL_SIGNER", (hasReleaseKey || System.getenv("HORIZON_VERIFY_OFFICIAL_SIGNER") == "1") ? "true" : "false"
         applicationId providers.gradleProperty('appId').getOrElse('com.goydevv.horizon')
+        manifestPlaceholders = [appLabel: providers.gradleProperty('privateBuild').getOrElse('false') == 'true' ? 'Nivora Privado' : 'Nivora Launcher']
         minSdk providers.gradleProperty('minSdk').getOrElse('28').toInteger()
         targetSdk 35
         versionCode providers.gradleProperty('devVersionCode').getOrElse('30').toInteger()

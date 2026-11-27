@@ -159,6 +159,8 @@ struct Reader<'a, 's> {
     offset: usize,
     limits: Limits,
     nodes: usize,
+    /// Original NBT, before long arrays and the modern mixed-list wrapper.
+    legacy: bool,
     /// Lists with this key in the root compound or in a compound directly
     /// under it are streamed to the visitor instead of kept.
     stream: Option<(&'s str, Visit<'s>)>,
@@ -215,10 +217,16 @@ impl<'a> Reader<'a, '_> {
     /// `StringTag.skipString`: vanilla skips a file root's name unread, so a
     /// name that isn't modified UTF-8 is read as empty rather than refused.
     fn root_name(&mut self) -> Result<JavaString, Error> {
+        if self.legacy {
+            return self.string();
+        }
         let len = u16::from_be_bytes(self.number()?) as usize;
         Ok(modified_utf8(self.take(len)?).unwrap_or_default())
     }
     fn payload(&mut self, id: u8, depth: usize) -> Result<Tag, Error> {
+        if self.legacy && id > 11 {
+            return Err(self.error("tag type is not supported by legacy NBT"));
+        }
         if self.nodes >= self.limits.max_nodes {
             return Err(self.error("node limit exceeded"));
         }
@@ -234,11 +242,19 @@ impl<'a> Reader<'a, '_> {
             4 => Tag::Long(i64::from_be_bytes(self.number()?)),
             5 => {
                 let bits = u32::from_be_bytes(self.number()?);
-                Tag::Float(if f32::from_bits(bits) == 0.0 { 0 } else { bits })
+                Tag::Float(if !self.legacy && f32::from_bits(bits) == 0.0 {
+                    0
+                } else {
+                    bits
+                })
             }
             6 => {
                 let bits = u64::from_be_bytes(self.number()?);
-                Tag::Double(if f64::from_bits(bits) == 0.0 { 0 } else { bits })
+                Tag::Double(if !self.legacy && f64::from_bits(bits) == 0.0 {
+                    0
+                } else {
+                    bits
+                })
             }
             7 => {
                 let len = self.count(1)?;
@@ -248,6 +264,9 @@ impl<'a> Reader<'a, '_> {
             9 => {
                 let element_id = self.byte()?;
                 let len = self.count(0)?;
+                if self.legacy && element_id > 11 {
+                    return Err(self.error("list type is not supported by legacy NBT"));
+                }
                 if len > 0 && (element_id == 0 || element_id > 12) {
                     return Err(self.error("invalid list element type"));
                 }
@@ -261,7 +280,9 @@ impl<'a> Reader<'a, '_> {
                 let mut values = Vec::with_capacity(len);
                 for _ in 0..len {
                     let mut value = self.payload(element_id, depth + 1)?;
-                    if let Tag::Compound(map) = &mut value {
+                    if !self.legacy
+                        && let Tag::Compound(map) = &mut value
+                    {
                         if map.len() == 1 && map.contains_key(&JavaString::default()) {
                             value = map.remove(&JavaString::default()).unwrap();
                         }
@@ -418,11 +439,23 @@ fn modified_utf8(bytes: &[u8]) -> Option<JavaString> {
 
 /// Read a file root (type, modified-UTF name, payload), returning bytes consumed.
 pub fn read_named(bytes: &[u8], limits: Limits) -> Result<(NamedTag, usize), Error> {
+    read_named_format(bytes, limits, false)
+}
+
+/// Read pre-1.12 named NBT. Compound lists retain empty-name entries literally;
+/// no 26.3 mixed-list interpretation or signed-zero normalization is applied.
+/// Tag types introduced later, including long arrays, are rejected.
+pub fn read_named_legacy(bytes: &[u8], limits: Limits) -> Result<(NamedTag, usize), Error> {
+    read_named_format(bytes, limits, true)
+}
+
+fn read_named_format(bytes: &[u8], limits: Limits, legacy: bool) -> Result<(NamedTag, usize), Error> {
     let mut reader = Reader {
         bytes,
         offset: 0,
         limits,
         nodes: 0,
+        legacy,
         stream: None,
     };
     let id = reader.byte()?;
@@ -451,6 +484,7 @@ pub fn read_named_streaming(
         offset: 0,
         limits,
         nodes: 0,
+        legacy: false,
         stream: Some((key, visit)),
     };
     let id = reader.byte()?;
@@ -470,6 +504,7 @@ pub fn read_network(bytes: &[u8], limits: Limits) -> Result<(Tag, usize), Error>
         offset: 0,
         limits,
         nodes: 0,
+        legacy: false,
         stream: None,
     };
     let id = reader.byte()?;
@@ -481,6 +516,7 @@ struct Writer {
     bytes: Vec<u8>,
     limits: Limits,
     nodes: usize,
+    legacy: bool,
     /// `NbtIo.StringFallbackDataOutput`, the disk writer's: a string too long
     /// for modified UTF-8 is written empty and the rest of the tree goes on.
     /// shortcut: vanilla also logs "Failed to write NBT String"; this crate has no logger.
@@ -538,6 +574,9 @@ impl Writer {
         Ok(())
     }
     fn payload(&mut self, tag: &Tag, depth: usize) -> Result<(), Error> {
+        if self.legacy && matches!(tag, Tag::LongArray(_)) {
+            return Err(self.error("tag type is not supported by legacy NBT"));
+        }
         if self.nodes >= self.limits.max_nodes {
             return Err(self.error("node limit exceeded"));
         }
@@ -577,16 +616,16 @@ impl Writer {
                     return Err(self.error("End cannot be a list element"));
                 }
                 let first = values.first().map_or(0, Tag::id);
-                let id = if values.iter().any(|v| v.id() != first) {
-                    10
-                } else {
-                    first
-                };
+                let mixed = values.iter().any(|v| v.id() != first);
+                if self.legacy && mixed {
+                    return Err(self.error("legacy NBT lists must be homogeneous"));
+                }
+                let id = if mixed { 10 } else { first };
                 self.put(&[id])?;
                 self.count(values.len())?;
                 for value in values {
                     let wrapper = matches!(value, Tag::Compound(c) if c.len() == 1 && c.contains_key(&JavaString::default()));
-                    if id == 10 && (value.id() != 10 || wrapper) {
+                    if !self.legacy && id == 10 && (value.id() != 10 || wrapper) {
                         // Emit one synthetic compound layer without cloning the tree.
                         if depth + 1 >= self.limits.max_depth {
                             return Err(self.error("depth limit exceeded"));
@@ -635,11 +674,23 @@ impl Writer {
 /// `NbtIo.write`: a file root. A string too long for modified UTF-8 is
 /// written empty, as vanilla's disk writer does; [`write_network`] refuses it.
 pub fn write_named(root: &NamedTag, limits: Limits) -> Result<Vec<u8>, Error> {
+    write_named_format(root, limits, false)
+}
+
+/// Write pre-1.12 named NBT without inserting modern mixed-list wrappers.
+/// Heterogeneous lists, long arrays and overlong strings fail without returning
+/// a partial serialized tree.
+pub fn write_named_legacy(root: &NamedTag, limits: Limits) -> Result<Vec<u8>, Error> {
+    write_named_format(root, limits, true)
+}
+
+fn write_named_format(root: &NamedTag, limits: Limits, legacy: bool) -> Result<Vec<u8>, Error> {
     let mut writer = Writer {
         bytes: Vec::new(),
         limits,
         nodes: 0,
-        empty_long_strings: true,
+        legacy,
+        empty_long_strings: !legacy,
         canonical_nan: true,
     };
     writer.put(&[root.tag.id()])?;
@@ -655,6 +706,7 @@ pub fn write_network(tag: &Tag, limits: Limits) -> Result<Vec<u8>, Error> {
         bytes: Vec::new(),
         limits,
         nodes: 0,
+        legacy: false,
         empty_long_strings: false,
         canonical_nan: false,
     };
@@ -860,6 +912,76 @@ impl Snbt<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_compound_lists_keep_empty_key_values_without_modern_wrappers() {
+        // A 1.7 compound list containing {"":7} and {"":"x"}. The modern
+        // codec intentionally interprets these as mixed-list wrappers.
+        let bytes = [
+            10, 0, 0, 9, 0, 1, b'l', 10, 0, 0, 0, 2, 3, 0, 0, 0, 0, 0, 7, 0, 8, 0, 0, 0, 1, b'x',
+            0, 0,
+        ];
+        let expected = Tag::compound([(
+            "l",
+            Tag::List(vec![
+                Tag::compound([("", Tag::Int(7))]),
+                Tag::compound([("", Tag::String("x".into()))]),
+            ]),
+        )]);
+        let (root, used) = read_named_legacy(&bytes, Limits::default()).unwrap();
+        assert_eq!(root.tag, expected);
+        assert_eq!(used, bytes.len());
+        assert_eq!(write_named_legacy(&root, Limits::default()).unwrap(), bytes);
+        assert_eq!(
+            read_named(&bytes, Limits::default()).unwrap().0.tag.get("l"),
+            Some(&Tag::List(vec![Tag::Int(7), Tag::String("x".into())])),
+        );
+        let modern = write_named(&root, Limits::default()).unwrap();
+        assert_ne!(modern, bytes);
+        assert_eq!(
+            read_named(&modern, Limits::default()).unwrap().0.tag,
+            expected
+        );
+    }
+
+    #[test]
+    fn legacy_nbt_refuses_later_types_mixed_lists_and_lossy_string_fallback() {
+        assert!(read_named_legacy(&[12, 0, 0, 0, 0, 0, 0], Limits::default()).is_err());
+        assert!(read_named_legacy(&[9, 0, 0, 12, 0, 0, 0, 0], Limits::default()).is_err());
+        for tag in [
+            Tag::LongArray(vec![7]),
+            Tag::List(vec![Tag::Byte(1), Tag::Int(2)]),
+            Tag::String(JavaString(vec![0; 32768])),
+        ] {
+            let root = NamedTag {
+                name: "".into(),
+                tag,
+            };
+            assert!(write_named_legacy(&root, Limits::default()).is_err());
+            assert!(write_named(&root, Limits::default()).is_ok());
+        }
+    }
+
+    #[test]
+    fn legacy_named_nbt_preserves_signed_zero_and_applies_input_limits() {
+        let bytes = [5, 0, 0, 0x80, 0, 0, 0];
+        let (root, _) = read_named_legacy(&bytes, Limits::default()).unwrap();
+        assert_eq!(root.tag, Tag::Float(0x8000_0000));
+        assert_eq!(write_named_legacy(&root, Limits::default()).unwrap(), bytes);
+        assert_eq!(
+            read_named(&bytes, Limits::default()).unwrap().0.tag,
+            Tag::Float(0)
+        );
+        let tiny = Limits {
+            max_bytes: 6,
+            ..Limits::default()
+        };
+        assert!(read_named_legacy(&bytes, tiny).is_err());
+        assert!(write_named_legacy(&root, tiny).is_err());
+        // Historical DataInput.readUTF validates a malformed root name too.
+        assert!(read_named_legacy(&[10, 0, 1, 0xff, 0], Limits::default()).is_err());
+    }
+
     /// `NbtIo.write` (`StringFallbackDataOutput`) writes a string too long for
     /// modified UTF-8 empty and goes on (#5064); the network writer refuses
     /// it. Vanilla 26.3's bytes for `{s: 32768 x U+0000}` (65536 encoded).

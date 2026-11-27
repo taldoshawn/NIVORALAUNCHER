@@ -109,7 +109,7 @@ pub(super) fn run(
 }
 
 /// 1.8.9 has fixed dimensions and no configuration registry phase.
-fn registries() -> Dynamic {
+pub(super) fn registries() -> Dynamic {
     let mut dynamic = Dynamic::default();
     dynamic.registries.insert(
         "minecraft:dimension_type".into(),

@@ -105,6 +105,7 @@ def main():
     parser.add_argument('--rust-only', action='store_true', help='Build the Rust host without touching shared APK staging')
     parser.add_argument('--release-candidate', action='store_true', help='Build a non-debuggable candidate and audit privacy; this does not authorize redistribution of bundled game resources')
     parser.add_argument('--public', action='store_true', help='Distribution APK: generated tables only; original resources download from Mojang')
+    parser.add_argument('--private-build', action='store_true', help='Owner-only test build: separate .private app ID and public updater disabled; this does not upload the APK')
     parser.add_argument('--dev-build', help='Public, non-debuggable dev channel label (separate .dev package)')
     parser.add_argument('--dev-version-code', type=int, help='Monotonically increasing dev channel version code')
     parser.add_argument('--app-id', help='Separate Android application ID for a downstream fork')
@@ -114,6 +115,11 @@ def main():
     parser.add_argument('--clippy', action='store_true', help='Run Android Clippy with warnings denied')
     parser.add_argument('--bootstrap', type=Path, help=argparse.SUPPRESS)  # Old scripts: no longer used.
     args = parser.parse_args()
+    if args.private_build and not (
+        args.public and args.dev_build and args.dev_version_code is not None
+        and args.app_id and args.app_id.endswith('.private')
+    ):
+        parser.error('--private-build requires --public, --dev-build, --dev-version-code and an explicit --app-id ending in .private')
     if args.dev_build is not None:
         if not args.public or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9.-]{0,63}', args.dev_build):
             parser.error('--dev-build requires --public and a short alphanumeric/dot/dash label')
@@ -162,6 +168,7 @@ def main():
     environment[f'CARGO_TARGET_{triple.upper()}_LINKER'] = str(clang)
     environment['CARGO_PROFILE_DEV_DEBUG'] = '0'
     environment['HORIZON_ANDROID_PUBLIC'] = '1' if args.public else '0'
+    environment['NIVORA_PRIVATE_TEST'] = '1' if args.private_build else '0'
     try:
         environment['HORIZON_ANDROID_BUILD_COMMIT'] = subprocess.check_output(
             ['git', 'rev-parse', '--short=12', 'HEAD'], cwd=ROOT,
@@ -232,6 +239,8 @@ def main():
     dev_properties = (['-PdevBuild=' + args.dev_build,
                        '-PdevVersionCode=' + str(args.dev_version_code)] if args.dev_build else [])
     dev_properties.append('-PappId=' + app_id)
+    if args.private_build:
+        dev_properties.append('-PprivateBuild=true')
     run([gradle, '--no-daemon', '-p', ROOT / 'packaging/android', '-Pabi=' + args.abi, '-PminSdk=' + str(min_sdk), *dev_properties, 'assemble' + variant.title()], cwd=ROOT, env=environment)
     apk = output / ('horizon-android-public.apk' if args.public else 'horizon-android-release.apk' if args.release_candidate else 'horizon-android.apk')
     shutil.copyfile(ROOT / f'.local/android/gradle-build/outputs/apk/{variant}/HorizonAndroid-{variant}.apk', apk)

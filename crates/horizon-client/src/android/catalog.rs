@@ -67,6 +67,7 @@ pub struct Config {
     pub name: String,
     pub server: String,
     pub legacy18: bool,
+    pub legacy17: bool,
     #[serde(skip)]
     pub microsoft_client_id: String,
     pub renderer: RendererMode,
@@ -134,6 +135,7 @@ impl Default for Config {
             name: String::new(),
             server: String::new(),
             legacy18: false,
+            legacy17: false,
             microsoft_client_id: String::new(),
             renderer: RendererMode::default(),
             render_scale: crate::display::RenderScale::default(),
@@ -211,6 +213,16 @@ impl Orientation {
     }
 }
 impl Config {
+    pub fn game_version_label(&self) -> &'static str {
+        if self.legacy17 {
+            "1.7.10"
+        } else if self.legacy18 {
+            "1.8.9"
+        } else {
+            "26.3"
+        }
+    }
+
     pub fn load(home: &Path) -> Self {
         let value: serde_json::Value = std::fs::read(home.join("android-launcher.json"))
             .ok()

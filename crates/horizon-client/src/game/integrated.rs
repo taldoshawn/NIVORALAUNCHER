@@ -320,6 +320,9 @@ impl Game<'_> {
         creative: bool,
         create: Option<&WorldOptions>,
     ) -> Result<()> {
+        if self.options.legacy17.is_some() {
+            return Err("A native singleplayer engine for Minecraft 1.7 is not implemented".into());
+        }
         let auth = horizon_client::auth::current();
         let player = auth
             .as_ref()

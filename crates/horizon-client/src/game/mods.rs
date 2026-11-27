@@ -1852,45 +1852,6 @@ mod tests {
     }
 }
 
-#[cfg(test)]
-fn not_built(
-    dir: &std::path::Path,
-    built: &str,
-    rows: &[mod_list::Installed],
-) -> Vec<mod_list::Installed> {
-    let info: serde_json::Value = serde_json::from_str(built).unwrap_or_default();
-    let in_build = |id: &str| {
-        info["mods"]
-            .as_array()
-            .is_some_and(|mods| mods.iter().any(|m| m["id"] == id))
-    };
-    let mut paths: Vec<PathBuf> = std::fs::read_dir(dir)
-        .map(|d| d.flatten().map(|e| e.path()).collect())
-        .unwrap_or_default();
-    paths.retain(|p| p.extension().is_some_and(|e| e == "hnmod"));
-    paths.sort();
-    let mut out: Vec<mod_list::Installed> = Vec::new();
-    for path in paths {
-        let Ok(bundle) = horizon_mods::index::native::Bundle::read(&path) else {
-            continue;
-        };
-        let m = bundle.manifest;
-        let listed = rows.iter().chain(&out).any(|row| row.id == m.id);
-        if !listed && !in_build(&m.id) {
-            out.push(mod_list::Installed {
-                title: format!("{} {}", m.id, m.version),
-                id: m.id,
-                description: String::new(),
-                problem: Some(mod_list::NOT_BUILT.to_owned()),
-                dev: false,
-                native: None,
-                has_settings: false,
-            });
-        }
-    }
-    out
-}
-
 /// A mod gave `block` block entity `id`, but the block's template has none,
 /// so breaking it would never remove it: the block gets none.
 pub(super) fn warn_no_block_entity(block: &str, id: &str) {

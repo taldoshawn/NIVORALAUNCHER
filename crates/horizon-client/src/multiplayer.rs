@@ -177,7 +177,49 @@ fn favicon_bytes(json: &serde_json::Value) -> Option<Vec<u8>> {
         .replace('\n', "");
     crate::skins::base64_decode(&base64)
 }
-fn ping_all(servers: &[ServerEntry], pings: &Pings, icons: &Icons, file: &Path) {
+fn status_ping(json: &serde_json::Value, ms: u128, expected_protocol: i32) -> Ping {
+    let motd = crate::component::to_text(&json["description"], &mut |s| Text::literal(s));
+    let players = json["players"].as_object().map(|p| {
+        (
+            p.get("online").and_then(|n| n.as_i64()).unwrap_or(0),
+            p.get("max").and_then(|n| n.as_i64()).unwrap_or(0),
+        )
+    });
+    let player_list = players
+        .map(|(online, _)| player_list(&json["players"], online))
+        .unwrap_or_default();
+    let version = json["version"]["name"].as_str().unwrap_or("?").to_owned();
+    // ServerStatus.version absent: `multiplayer.status.old` and protocol 0.
+    let protocol = json["version"]["protocol"].as_i64().unwrap_or(0);
+    if protocol == i64::from(expected_protocol) {
+        Ping::Ok {
+            motd,
+            players,
+            player_list,
+            ms,
+            version,
+        }
+    } else {
+        Ping::Incompatible {
+            motd,
+            players,
+            player_list,
+            version: if json["version"].is_object() {
+                Text::literal(version)
+            } else {
+                Text::translate("multiplayer.status.old", &[])
+            },
+        }
+    }
+}
+
+fn ping_all(
+    servers: &[ServerEntry],
+    pings: &Pings,
+    icons: &Icons,
+    file: &Path,
+    expected_protocol: i32,
+) {
     for s in servers {
         let address = s.ip.clone();
         pings.lock().unwrap().insert(address.clone(), Ping::Pinging);
@@ -193,29 +235,12 @@ fn ping_all(servers: &[ServerEntry], pings: &Pings, icons: &Icons, file: &Path) 
         let _ = std::thread::Builder::new()
             .name("horizon-ping".into())
             .spawn(move || {
-                let result = match crate::net::ping(&address, Duration::from_secs(5)) {
+                let result = match crate::net::ping_with_protocol(
+                    &address,
+                    Duration::from_secs(5),
+                    expected_protocol,
+                ) {
                     Ok((json, ms)) => {
-                        let motd = crate::component::to_text(&json["description"], &mut |s| {
-                            Text::literal(s)
-                        });
-                        let players = json["players"].as_object().map(|p| {
-                            (
-                                p.get("online").and_then(|n| n.as_i64()).unwrap_or(0),
-                                p.get("max").and_then(|n| n.as_i64()).unwrap_or(0),
-                            )
-                        });
-                        let player_list = players
-                            .map(|(online, _)| player_list(&json["players"], online))
-                            .unwrap_or_default();
-                        let version = json["version"]["name"].as_str().unwrap_or("?").to_owned();
-                        // ServerStatus.version absent: `multiplayer.status.old`
-                        // and protocol 0.
-                        let protocol = json["version"]["protocol"].as_i64().unwrap_or(0);
-                        let version_text = if json["version"].is_object() {
-                            Text::literal(version.clone())
-                        } else {
-                            Text::translate("multiplayer.status.old", &[])
-                        };
                         // A new favicon replaces the saved one (an invalid one
                         // clears it) and servers.dat is saved again.
                         if let Some(png) = favicon_bytes(&json) {
@@ -230,23 +255,7 @@ fn ping_all(servers: &[ServerEntry], pings: &Pings, icons: &Icons, file: &Path) 
                                 save_icon(&file, &address, icon);
                             }
                         }
-                        // OnlineServerEntry: SUCCESSFUL only for this game's protocol.
-                        if protocol == i64::from(horizon_protocol::PROTOCOL_VERSION) {
-                            Ping::Ok {
-                                motd,
-                                players,
-                                player_list,
-                                ms,
-                                version,
-                            }
-                        } else {
-                            Ping::Incompatible {
-                                motd,
-                                players,
-                                player_list,
-                                version: version_text,
-                            }
-                        }
+                        status_ping(&json, ms, expected_protocol)
                     }
                     // ClientStatusPacketListener.onDisconnect without a
                     // status: pingLegacyServer.
@@ -608,10 +617,21 @@ impl Screen {
     }
 
     pub fn list(saves: &Path) -> Self {
+        Self::list_with_protocol(saves, horizon_protocol::PROTOCOL_VERSION)
+    }
+    /// A historical selection changes status compatibility without changing
+    /// which addresses the list permits the user to join.
+    pub fn list_with_protocol(saves: &Path, expected_protocol: i32) -> Self {
         let servers = servers::load(&servers_file(saves));
         let pings: Pings = Arc::default();
         let icons: Icons = Arc::default();
-        ping_all(&servers, &pings, &icons, &servers_file(saves));
+        ping_all(
+            &servers,
+            &pings,
+            &icons,
+            &servers_file(saves),
+            expected_protocol,
+        );
         Self::List {
             servers,
             selected: None,
@@ -1389,6 +1409,17 @@ impl Screen {
         size: (f32, f32),
         saves: &Path,
     ) -> Outcome {
+        self.click_with_protocol(id, x, y, size, saves, horizon_protocol::PROTOCOL_VERSION)
+    }
+    pub fn click_with_protocol(
+        &mut self,
+        id: Option<u8>,
+        x: f32,
+        y: f32,
+        size: (f32, f32),
+        saves: &Path,
+        expected_protocol: i32,
+    ) -> Outcome {
         let (w, h) = size;
         match (&mut *self, id) {
             (
@@ -1484,7 +1515,9 @@ impl Screen {
                     save_servers(&servers_file(saves), servers);
                 }
             }
-            (Self::List { .. }, Some(45)) => *self = Self::list(saves),
+            (Self::List { .. }, Some(45)) => {
+                *self = Self::list_with_protocol(saves, expected_protocol)
+            }
             (Self::List { .. }, Some(46)) => return Outcome::Back,
             (
                 Self::List {
@@ -1581,7 +1614,7 @@ impl Screen {
                     None => list.push(entry),
                 }
                 let _ = servers::save(&servers_file(saves), &list);
-                *self = Self::list(saves);
+                *self = Self::list_with_protocol(saves, expected_protocol);
             }
             (
                 Self::Edit { .. }
@@ -1589,7 +1622,7 @@ impl Screen {
                 | Self::Friend { .. }
                 | Self::Disconnected { .. },
                 Some(51 | 53 | 54 | 57),
-            ) => *self = Self::list(saves),
+            ) => *self = Self::list_with_protocol(saves, expected_protocol),
             (Self::Disconnected { retry, .. }, Some(55)) => *retry = None,
             (Self::Direct { address }, Some(52)) => {
                 return Outcome::Connect {
@@ -1777,6 +1810,9 @@ impl Screen {
     }
     /// Escape: back to the list, or out of it (true).
     pub fn escape(&mut self, saves: &Path) -> bool {
+        self.escape_with_protocol(saves, horizon_protocol::PROTOCOL_VERSION)
+    }
+    pub fn escape_with_protocol(&mut self, saves: &Path, expected_protocol: i32) -> bool {
         match self {
             Self::List { .. } => true,
             // ConfirmScreen.keyPressed: Escape answers no.
@@ -1791,7 +1827,7 @@ impl Screen {
                 false
             }
             _ => {
-                *self = Self::list(saves);
+                *self = Self::list_with_protocol(saves, expected_protocol);
                 false
             }
         }
@@ -1837,6 +1873,47 @@ pub fn wrap(text: &str, width: f32, atlas: &HudAtlas) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn historical_status_matches_only_the_selected_protocol() {
+        for (protocol, name) in [(4, "1.7.2"), (5, "1.7.10")] {
+            let json = serde_json::json!({
+                "version": { "name": name, "protocol": protocol },
+                "description": { "text": "Historical server" },
+                "players": { "online": 3, "max": 20 }
+            });
+            let Ping::Ok {
+                motd,
+                players,
+                ms,
+                version,
+                ..
+            } = status_ping(&json, 12, protocol)
+            else {
+                panic!("matching historical server must be compatible");
+            };
+            assert_eq!(motd.plain(), "Historical server");
+            assert_eq!(players, Some((3, 20)));
+            assert_eq!(ms, 12);
+            assert_eq!(version, name);
+            assert!(matches!(
+                status_ping(&json, 12, 9 - protocol),
+                Ping::Incompatible { .. }
+            ));
+            assert!(matches!(
+                status_ping(&json, 12, horizon_protocol::PROTOCOL_VERSION),
+                Ping::Incompatible { .. }
+            ));
+        }
+        let modern = serde_json::json!({
+            "version": { "name": "current", "protocol": horizon_protocol::PROTOCOL_VERSION },
+            "description": "Current server"
+        });
+        assert!(matches!(
+            status_ping(&modern, 4, horizon_protocol::PROTOCOL_VERSION),
+            Ping::Ok { players: None, .. }
+        ));
+    }
 
     #[test]
     fn only_discovered_entries_get_lan_authentication() {

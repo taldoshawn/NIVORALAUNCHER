@@ -461,6 +461,8 @@ struct Options {
     /// Multiplayer: `--server HOST[:PORT]` joins at start; `--name` is the offline player name.
     server: Option<String>,
     legacy18: bool,
+    /// The 1.7 transport reuses pre-combat-update client prediction, with its own wire codecs.
+    legacy17: Option<horizon_protocol::legacy17::Version>,
     /// `--name`, `HORIZON_PLAYER_NAME` or the signed-in account's name; else
     /// [`Options::player_name`] uses the kept offline name.
     player_name: Option<String>,
@@ -620,6 +622,7 @@ impl Options {
                 .and_then(|v| v.parse().ok()),
             server: None,
             legacy18: false,
+            legacy17: None,
             player_name: std::env::var("HORIZON_PLAYER_NAME")
                 .ok()
                 .filter(|n| !n.is_empty()),
@@ -655,7 +658,18 @@ impl Options {
                     println!("{}", launch_api::reply(&horizon_client::crash::version()));
                     return Ok(None);
                 }
-                "--protocol-47" => o.legacy18 = true,
+                "--protocol-47" => {
+                    o.legacy18 = true;
+                    o.legacy17 = None;
+                }
+                "--protocol-4" | "--protocol-5" => {
+                    o.legacy18 = true;
+                    o.legacy17 = Some(if arg == "--protocol-4" {
+                        horizon_protocol::legacy17::Version::V1_7_2
+                    } else {
+                        horizon_protocol::legacy17::Version::V1_7_10
+                    });
+                }
                 "--fullscreen" => o.fullscreen = true,
                 "--session-stdin" => o.session_stdin = true,
                 "--dedicated" => {
@@ -768,6 +782,20 @@ impl Options {
                     read().map_err(|e| format!("{arg}: {e}"))?;
                 }
             }
+        }
+        if o.legacy17.is_some()
+            && (o.world.is_some()
+                || o.quick_play.is_some()
+                || o.benchmark.is_some()
+                || o.dedicated.is_some())
+        {
+            return Err(
+                concat!(
+                    "Minecraft 1.7 currently supports multiplayer only; ",
+                    "a historical singleplayer engine is not implemented"
+                )
+                .into(),
+            );
         }
         Ok(Some(o))
     }
@@ -11581,6 +11609,15 @@ impl Game<'_> {
         creative: bool,
         create: Option<&horizon_client::title::WorldOptions>,
     ) -> Result<()> {
+        if self.options.legacy17.is_some() {
+            return Err(
+                concat!(
+                    "Singleplayer 1.7 ainda não implementado; ",
+                    "este perfil aceita somente servidores 1.7"
+                )
+                .into(),
+            );
+        }
         // openWorldLoadLevelData: an existing world whose level data does not read opens
         // RecoverWorldDataScreen instead.
         if create.is_none()
@@ -12192,6 +12229,7 @@ impl Game<'_> {
         );
         if let Some(title) = &mut self.title {
             title.legacy18 = self.options.legacy18;
+            title.legacy17 = self.options.legacy17;
             title.last_server = self.settings.file.string("lastServer");
             title.skip_multiplayer_warning = self.settings.file.bool("skipMultiplayerWarning");
         }
@@ -20428,6 +20466,7 @@ fn start_game<'a>(
             )
             .with_user(|| game.options.player_name());
             title.legacy18 = game.options.legacy18;
+            title.legacy17 = game.options.legacy17;
             title.last_server = game.settings.file.string("lastServer");
             title.skip_multiplayer_warning = game.settings.file.bool("skipMultiplayerWarning");
             // Gui.addInitialScreens: the accessibility onboarding comes first.
@@ -20735,7 +20774,10 @@ impl Loading {
             self.started.elapsed().as_millis()
         );
         self.menu.set_root(root, &self.settings, gui.sounds.take());
-        self.menu.set_legacy(self.options.as_ref().is_some_and(|options| options.legacy18));
+        self.menu.set_legacy(
+            self.options.as_ref().is_some_and(|options| options.legacy18),
+            self.options.as_ref().and_then(|options| options.legacy17),
+        );
         self.gui = Some(gui);
         horizon_client::ui_theme::reset_atlas();
         self.apply_menu_settings();
@@ -21702,6 +21744,38 @@ fn debug_crosshair_drawn(
 mod tests {
     use super::*;
     use horizon_client::container_screen::{Button, Clicks, Release, Target};
+
+    #[test]
+    fn legacy17_selection_cannot_start_a_different_versions_local_engine() {
+        for protocol in ["--protocol-4", "--protocol-5"] {
+            for args in [
+                vec![protocol, "--world", "Historical"],
+                vec![protocol, "--quickPlaySingleplayer", "Historical"],
+                vec!["--benchmark", "standard", protocol],
+                vec![protocol, "--dedicated"],
+            ] {
+                assert!(Options::parse(args.into_iter().map(str::to_owned)).is_err());
+            }
+            let options = Options::parse(
+                [protocol, "--server", "127.0.0.1:25565"].into_iter().map(str::to_owned),
+            )
+            .unwrap()
+            .unwrap();
+            assert_eq!(options.server.as_deref(), Some("127.0.0.1:25565"));
+            assert_eq!(
+                options.legacy17.unwrap().protocol(),
+                if protocol == "--protocol-4" { 4 } else { 5 }
+            );
+        }
+        let options = Options::parse(
+            ["--protocol-5", "--protocol-47", "--world", "Existing"]
+                .into_iter()
+                .map(str::to_owned),
+        )
+        .unwrap()
+        .unwrap();
+        assert!(options.legacy17.is_none());
+    }
 
     /// `NativeScreenView.id` (the `screen_render_post` hook) is a mod's
     /// contract: every `Screen` has its own id, and it does not change.
