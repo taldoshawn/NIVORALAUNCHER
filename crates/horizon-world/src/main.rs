@@ -46,6 +46,17 @@ fn write_new(path: &str, bytes: &[u8]) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn palette_chunk(record: &ChunkRecord) -> Result<ChunkData, Box<dyn Error>> {
+    let root = record.nbt(Limits::default())?;
+    Ok(
+        if root.tag.get("DataVersion") == Some(&nbt::Tag::Int(3465)) {
+            ChunkData::new_1201(root)?
+        } else {
+            ChunkData::new(root)?
+        },
+    )
+}
+
 fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
     let Some(command) = args.first().map(String::as_str) else {
         return Err("use --help for commands".into());
@@ -173,7 +184,7 @@ fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
             let record = RegionFile::open(&args[1])?
                 .read(block.chunk())?
                 .ok_or("chunk is absent")?;
-            let chunk = ChunkData::new(record.nbt(Limits::default())?)?;
+            let chunk = palette_chunk(&record)?;
             let state = chunk
                 .block(block)?
                 .ok_or("section has no block-state data")?;
@@ -199,7 +210,7 @@ fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
             }
             let mut region = RegionFile::open(&args[1])?;
             let old = region.read(block.chunk())?.ok_or("chunk is absent")?;
-            let mut chunk = ChunkData::new(old.nbt(Limits::default())?)?;
+            let mut chunk = palette_chunk(&old)?;
             chunk.set_block_data(
                 block,
                 BlockState {
