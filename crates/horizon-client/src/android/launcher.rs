@@ -505,7 +505,9 @@ impl Launcher {
             if !self.launching {
                 self.launching = true;
                 self.error = None;
-                self.catalog.status = if self.catalog.config.legacy18 {
+                self.catalog.status = if self.catalog.config.legacy17 {
+                    "Abrindo multiplayer Minecraft 1.7.10 experimental…"
+                } else if self.catalog.config.legacy18 {
                     "Abrindo Minecraft 1.8.9 experimental…"
                 } else {
                     "Starting Minecraft 26.3..."
@@ -655,7 +657,9 @@ impl Launcher {
             horizon_client::android_runtime::clear_gamepads();
             self.controller_edges = Default::default();
             self.controller_repeat = None;
-            if self.catalog.config.legacy18 {
+            if self.catalog.config.legacy17 {
+                extra_arguments.push("--protocol-5".into());
+            } else if self.catalog.config.legacy18 {
                 extra_arguments.push("--protocol-47".into());
             }
             let request = crate::game_launch::LaunchRequest {

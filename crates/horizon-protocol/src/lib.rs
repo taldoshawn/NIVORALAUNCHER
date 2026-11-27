@@ -11,6 +11,7 @@ pub mod frame;
 pub mod hash_ops;
 pub mod ids;
 pub mod item;
+pub mod legacy17;
 pub mod legacy18;
 pub mod mod_net;
 pub mod packets;

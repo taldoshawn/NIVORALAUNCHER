@@ -3,8 +3,8 @@
 The default game still targets the modern protocol. The development backend
 now connects protocol 47 to the game via `--protocol-47`, and Android's version
 chooser selects that connection path. This is not yet a validated playable
-release: APK rendering and interaction tests remain pending. Other historical
-protocols are not implemented.
+release: APK rendering and interaction tests remain pending. Protocols 4 and 5
+now have a separate [experimental 1.7 transport](legacy17-protocol.md).
 
 Implemented and covered by byte fixtures and local TCP peers:
 

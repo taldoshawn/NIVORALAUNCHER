@@ -1,7 +1,9 @@
 # Nivora: home, shaders e catálogo Modrinth
 
-O app Android usa o cliente Rust do projeto, com recursos e mundos do motor
-26.3. Selecionar outra versão de rede não instala o cliente Java dessa versão.
+O app Android usa o cliente Rust do projeto. Os recursos preparados e o motor
+de mundos padrão continuam sendo os existentes; os transportes históricos
+possuem caminhos próprios. Selecionar outra versão de rede não instala o
+cliente Java dessa versão.
 
 ## Alterações
 
@@ -38,13 +40,17 @@ o multiplayer ainda precisa de conectividade entre os aparelhos.
 | 26.3 | Motor de mundos locais e multiplayer existente |
 | 1.8–1.8.9 | Transporte multiplayer de protocolo 47 experimental |
 | 1.8.9 singleplayer | Criativo plano experimental. Um mundo por perfil com nove blocos na barra, terreno plano, posição e slot selecionado salvos. Sobrevivência, criaturas e geração normal continuam pendentes. |
-| 1.7.10, 1.12.2, 1.20.1 | Clientes/motores e protocolos ainda não implementados |
+| 1.7.10 | Transporte nativo de protocolo 5, multiplayer experimental. Login, chunks, inventário, movimento, colocação e quebra validados com servidor vanilla. Singleplayer indisponível. |
+| 1.7.2 | Transporte nativo de protocolo 4 validado com servidor vanilla; seleção pela CLI. Sem motor local 1.7. |
+| 1.12.2, 1.20.1 e demais versões históricas | Clientes e motores ainda não implementados; consultas de status e leitura de regiões não equivalem a suporte de jogo. |
 
 A escolha do projeto é manter somente Rust. Executar essas versões de fato
 exige portar as regras, os registros, a geração de mundo e os saves de cada
 versão para o motor nativo, além de instalação de
-recursos, isolamento de mundos e validação de controles e renderização. Esta
-alteração não adiciona entradas de versão que iniciariam outro jogo.
+recursos, isolamento de mundos e validação de controles e renderização. A
+seleção 1.7 bloqueia a abertura de mundos locais até existir esse motor.
+Consulte a [implementação 1.7](legacy17-protocol.md) e sua
+[validação contra servidores originais](legacy17-validation.md).
 
 O criativo plano recusa regiões com cabeçalho truncado, alocações inválidas ou
 sobrepostas e chunks cujas coordenadas divergem do slot. A tentativa de edição

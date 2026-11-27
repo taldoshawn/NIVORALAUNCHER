@@ -134,8 +134,15 @@ impl StartupMenu {
         Ok(menu)
     }
 
-    pub(super) fn set_legacy(&mut self, enabled: bool) {
-        if let Some(title) = self.title.as_mut() { title.legacy18 = enabled; }
+    pub(super) fn set_legacy(
+        &mut self,
+        enabled: bool,
+        version: Option<horizon_protocol::legacy17::Version>,
+    ) {
+        if let Some(title) = self.title.as_mut() {
+            title.legacy18 = enabled;
+            title.legacy17 = version;
+        }
     }
 
     pub(super) fn set_root(
