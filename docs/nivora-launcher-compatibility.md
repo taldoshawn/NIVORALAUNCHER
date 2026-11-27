@@ -61,6 +61,15 @@ valores inválidos interrompem a abertura sem substituir o save.
 
 ## Verificação direcionada
 
+O diagnóstico Rust `historical_status` consulta a versão anunciada e a
+latência de um servidor existente. Aceita 1.7.10 (protocolo 5), 1.12.2 (340)
+e 1.20.1 (763). O campo `protocol_matches` compara o número anunciado com o
+selecionado. A consulta termina antes do login.
+
+```sh
+cargo run -p horizon-protocol --example historical_status -- 1.7.10 127.0.0.1 25565
+```
+
 O teste de interoperabilidade cria mundos temporários com os servidores de
 referência 1.7.10, 1.8.9, 1.12.2 e 1.20.1. A ferramenta Rust edita um bloco
 numa cópia da região. O teste confere o bloco de um chunk vizinho e o SHA-256
