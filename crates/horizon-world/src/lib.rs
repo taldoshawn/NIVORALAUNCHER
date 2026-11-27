@@ -94,6 +94,7 @@ pub mod movement_restitution;
 pub mod movement_statistics;
 pub mod movement_support;
 pub mod nbt;
+pub mod numeric_chunk;
 pub mod object_open_map;
 pub mod object_open_set;
 pub mod piston_movement;

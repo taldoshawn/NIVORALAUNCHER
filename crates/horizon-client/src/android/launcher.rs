@@ -43,6 +43,7 @@ pub(super) struct Launcher {
     gui: Option<game::UiResources>,
     pub(super) audio: Option<horizon_client::audio::Audio>,
     game: Option<Box<dyn ApplicationHandler>>,
+    next_redraw: Instant,
     cursor: (f64, f64),
     mouse_down: bool,
     feedback: Option<(pages::Action, Instant)>,
@@ -155,6 +156,8 @@ impl Launcher {
             }
             catalog.status = "Previous Vulkan startup was interrupted. Using Vulkan compatibility; you can change Rendering mode in Settings.".into();
         }
+        horizon_client::android_runtime::configure_compact_atlas(catalog.config.compact_atlas);
+        horizon_client::android_runtime::configure_worker_limit(catalog.config.worker_limit);
         crate::configure_input_mode(catalog.config.input_host);
         crate::device_runtime::configure(catalog.config.device);
         catalog.config.apply_experimental_to_game(&home);
@@ -233,6 +236,7 @@ impl Launcher {
             gui: None,
             audio: None,
             game: None,
+            next_redraw: Instant::now(),
             cursor: (0.0, 0.0),
             mouse_down: false,
             feedback: None,
@@ -381,15 +385,8 @@ impl Launcher {
             )),
         };
         renderer.set_loading_ui(&gui.atlas, gui.panorama.as_ref())?;
-        let uncapped = self.catalog.config.max_fps_mode && !self.catalog.config.battery_perf_mode;
-        renderer.set_present_mode(
-            !uncapped,
-            if uncapped {
-                horizon_client::graphics::PresentMode::Immediate
-            } else {
-                horizon_client::graphics::PresentMode::Fifo
-            },
-        );
+        // The launcher does not inherit the world's unlimited rendering mode.
+        renderer.set_present_mode(true, horizon_client::graphics::PresentMode::Fifo);
         self.renderer = Some(renderer);
         self.window = Some(window);
         self.gui = Some(gui);
@@ -494,9 +491,13 @@ impl Launcher {
             "play_requested",
             || serde_json::json!({"renderer":self.catalog.config.renderer.label(),"resolution_percent":self.catalog.config.render_scale.percent()}),
         );
+        horizon_client::android_runtime::configure_compact_atlas(self.catalog.config.compact_atlas);
         horizon_client::android_runtime::configure_worker_limit(self.catalog.config.worker_limit);
         horizon_client::android_runtime::configure_cache_budget(
             self.catalog.config.cache_budget_mib,
+        );
+        horizon_client::android_runtime::memory_budget::configure(
+            self.catalog.config.memory_target_mib,
         );
         crate::configure_input_mode(self.catalog.config.input_host);
         crate::device_runtime::configure(self.catalog.config.device);
@@ -505,7 +506,7 @@ impl Launcher {
                 self.launching = true;
                 self.error = None;
                 self.catalog.status = if self.catalog.config.legacy18 {
-                    "Starting Minecraft (1.8.9 server compatibility)..."
+                    "Abrindo Minecraft 1.8.9 experimental…"
                 } else {
                     "Starting Minecraft 26.3..."
                 }.into();
@@ -1052,14 +1053,7 @@ impl ApplicationHandler for Launcher {
                 return;
             }
         }
-        if let Some(window) = &self.window {
-            window.request_redraw();
-        }
-        if (self.catalog.config.max_fps_mode || self.catalog.config.super_perf_mode)
-            && !self.catalog.config.battery_perf_mode
         {
-            events.set_control_flow(ControlFlow::Poll);
-        } else {
             let frame_ms = if self.worker.is_some()
                 || self.launching
                 || self.session_worker.is_some()
@@ -1088,9 +1082,14 @@ impl ApplicationHandler for Launcher {
             } else {
                 33
             };
-            events.set_control_flow(ControlFlow::WaitUntil(
-                Instant::now() + Duration::from_millis(frame_ms),
-            ));
+            let now = Instant::now();
+            if now >= self.next_redraw {
+                if let Some(window) = &self.window {
+                    window.request_redraw();
+                }
+                self.next_redraw = now + Duration::from_millis(frame_ms);
+            }
+            events.set_control_flow(ControlFlow::WaitUntil(self.next_redraw));
         }
     }
     fn exiting(&mut self, events: &ActiveEventLoop) {

@@ -36,7 +36,7 @@ public final class HorizonActivity extends android.app.NativeActivity {
         }
         loadGame();
         super.onCreate(savedInstanceState);
-        applyHighRefreshRate(this, 0);
+        applyHighRefreshRate(this, requestedDisplayHz);
         if (!getPackageName().endsWith(".private")) UpdatePolicy.check(this);
         inputManager = (android.hardware.input.InputManager) getSystemService(INPUT_SERVICE);
         if (inputManager != null) {
@@ -188,18 +188,21 @@ public final class HorizonActivity extends android.app.NativeActivity {
 
     @Override protected void onResume() {
         super.onResume();
-        applyHighRefreshRate(this, 0);
+        applyHighRefreshRate(this, requestedDisplayHz);
     }
 
     @Override public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) {
-            applyHighRefreshRate(this, 0);
+            applyHighRefreshRate(this, requestedDisplayHz);
         }
     }
 
+    private static volatile int requestedDisplayHz = 0;
+
     public static void applyHighRefreshRate(final android.app.Activity activity, final int preferredHz) {
         if (activity == null) return;
+        requestedDisplayHz = preferredHz;
         activity.runOnUiThread(new Runnable() {
             @Override public void run() {
                 try {
@@ -209,30 +212,25 @@ public final class HorizonActivity extends android.app.NativeActivity {
                     if (display == null) return;
                     android.view.Display.Mode current = display.getMode();
                     android.view.Display.Mode[] modes = display.getSupportedModes();
-                    android.view.Display.Mode best = current;
-                    for (android.view.Display.Mode m : modes) {
-                        if (current != null && (m.getPhysicalWidth() != current.getPhysicalWidth()
-                                || m.getPhysicalHeight() != current.getPhysicalHeight())) {
-                            continue;
-                        }
-                        if (preferredHz > 0 && Math.abs(m.getRefreshRate() - preferredHz) < 1.5f) {
-                            best = m;
-                            break;
-                        }
-                        if (best == null || m.getRefreshRate() > best.getRefreshRate()) {
-                            best = m;
+                    android.view.Display.Mode best = null;
+                    if (preferredHz > 0) {
+                        for (android.view.Display.Mode m : modes) {
+                            if (current != null && (m.getPhysicalWidth() != current.getPhysicalWidth()
+                                    || m.getPhysicalHeight() != current.getPhysicalHeight())) {
+                                continue;
+                            }
+                            float error = Math.abs(m.getRefreshRate() - preferredHz);
+                            float bestError = best == null ? Float.MAX_VALUE
+                                    : Math.abs(best.getRefreshRate() - preferredHz);
+                            if (error < bestError || (error == bestError
+                                    && m.getRefreshRate() < best.getRefreshRate())) best = m;
                         }
                     }
                     android.view.WindowManager.LayoutParams lp = window.getAttributes();
-                    float targetRate = 0.0f;
-                    if (best != null) {
-                        lp.preferredDisplayModeId = best.getModeId();
-                        lp.preferredRefreshRate = best.getRefreshRate();
-                        targetRate = best.getRefreshRate();
-                    } else if (preferredHz > 0) {
-                        lp.preferredRefreshRate = (float) preferredHz;
-                        targetRate = (float) preferredHz;
-                    }
+                    // Zero removes the preference and lets Android choose the rate.
+                    lp.preferredDisplayModeId = best == null ? 0 : best.getModeId();
+                    float targetRate = best == null ? (float) preferredHz : best.getRefreshRate();
+                    lp.preferredRefreshRate = targetRate;
                     window.setAttributes(lp);
 
                     if (android.os.Build.VERSION.SDK_INT >= 30) {

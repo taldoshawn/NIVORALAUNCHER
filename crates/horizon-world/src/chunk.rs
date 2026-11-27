@@ -166,11 +166,14 @@ pub struct BlockState {
 }
 impl BlockState {
     pub fn to_nbt(&self) -> Tag {
+        self.to_named_nbt("id", "properties")
+    }
+    fn to_named_nbt(&self, id_key: &str, properties_key: &str) -> Tag {
         let mut map = Compound::new();
-        map.insert(key("id"), Tag::String(key(&self.name)));
+        map.insert(key(id_key), Tag::String(key(&self.name)));
         if !self.properties.is_empty() {
             map.insert(
-                key("properties"),
+                key(properties_key),
                 Tag::Compound(
                     self.properties
                         .iter()
@@ -182,17 +185,22 @@ impl BlockState {
         Tag::Compound(map)
     }
     pub fn from_nbt(tag: &Tag) -> io::Result<Self> {
-        if let Tag::String(name) = tag {
+        Self::from_named_nbt(tag, "id", "properties")
+    }
+    fn from_named_nbt(tag: &Tag, id_key: &str, properties_key: &str) -> io::Result<Self> {
+        if id_key == "id"
+            && let Tag::String(name) = tag
+        {
             return Ok(Self {
                 name: name.to_string().map_err(|e| invalid(e.to_string()))?,
                 properties: BlockProperties::new(),
             });
         }
-        let Some(Tag::String(name)) = tag.get("id") else {
+        let Some(Tag::String(name)) = tag.get(id_key) else {
             return Err(invalid("block state is missing id"));
         };
         let mut properties = Vec::new();
-        if let Some(tag) = tag.get("properties") {
+        if let Some(tag) = tag.get(properties_key) {
             let Tag::Compound(map) = tag else {
                 return Err(invalid("block properties are not a compound"));
             };
@@ -217,9 +225,35 @@ impl BlockState {
 pub struct ChunkData {
     root: NamedTag,
     position: ChunkPos,
+    format: PaletteFormat,
 }
+
+#[derive(Clone, Copy, Debug)]
+enum PaletteFormat {
+    Current,
+    V1201,
+}
+
+impl PaletteFormat {
+    fn keys(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Current => ("id", "properties"),
+            Self::V1201 => ("Name", "Properties"),
+        }
+    }
+}
+
 impl ChunkData {
     pub fn new(root: NamedTag) -> io::Result<Self> {
+        Self::from_format(root, PaletteFormat::Current)
+    }
+
+    /// Read and edit a 1.20.1 section palette without upgrading the save.
+    pub fn new_1201(root: NamedTag) -> io::Result<Self> {
+        Self::from_format(root, PaletteFormat::V1201)
+    }
+
+    fn from_format(root: NamedTag, format: PaletteFormat) -> io::Result<Self> {
         let Some(Tag::Int(x)) = root.tag.get("xPos") else {
             return Err(invalid("chunk is missing xPos"));
         };
@@ -230,9 +264,13 @@ impl ChunkData {
         let Some(Tag::Int(version)) = root.tag.get("DataVersion") else {
             return Err(invalid("chunk is missing DataVersion"));
         };
-        if *version != DATA_VERSION {
+        let expected = match format {
+            PaletteFormat::Current => DATA_VERSION,
+            PaletteFormat::V1201 => 3465,
+        };
+        if *version != expected {
             return Err(invalid(format!(
-                "expected DataVersion {DATA_VERSION}, got {version}; data fixing is not implemented"
+                "expected DataVersion {expected}, got {version}"
             )));
         }
         let Some(Tag::List(sections)) = root.tag.get("sections") else {
@@ -247,7 +285,11 @@ impl ChunkData {
                 return Err(invalid("duplicate section Y"));
             }
         }
-        Ok(Self { root, position })
+        Ok(Self {
+            root,
+            position,
+            format,
+        })
     }
     pub fn position(&self) -> ChunkPos {
         self.position
@@ -314,8 +356,11 @@ impl ChunkData {
             return Ok(None);
         };
         let palette = PalettedContainer::from_nbt(container, 4096, 4)?;
-        Ok(Some(BlockState::from_nbt(
+        let (id, properties) = self.format.keys();
+        Ok(Some(BlockState::from_named_nbt(
             palette.get(block.section_index())?,
+            id,
+            properties,
         )?))
     }
 
@@ -332,8 +377,9 @@ impl ChunkData {
             .get_mut("block_states")
             .ok_or_else(|| invalid("section has no block-state data"))?;
         let mut palette = PalettedContainer::from_nbt(container, 4096, 4)?;
-        let old = BlockState::from_nbt(palette.get(block.section_index())?)?;
-        palette.set(block.section_index(), state.to_nbt())?;
+        let (id, properties) = self.format.keys();
+        let old = BlockState::from_named_nbt(palette.get(block.section_index())?, id, properties)?;
+        palette.set(block.section_index(), state.to_named_nbt(id, properties))?;
         *container = palette.to_nbt();
         Ok(old)
     }
@@ -639,6 +685,61 @@ impl<'r> BlockSection<'r> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn v1201_palette_edit_preserves_format_and_negative_section() {
+        let section = Tag::compound([
+            ("Y", Tag::Byte(-4)),
+            (
+                "block_states",
+                Tag::compound([(
+                    "palette",
+                    Tag::List(vec![Tag::compound([(
+                        "Name",
+                        Tag::String("minecraft:air".into()),
+                    )])]),
+                )]),
+            ),
+        ]);
+        let root = NamedTag {
+            name: Default::default(),
+            tag: Tag::compound([
+                ("DataVersion", Tag::Int(3465)),
+                ("xPos", Tag::Int(-1)),
+                ("zPos", Tag::Int(0)),
+                ("sections", Tag::List(vec![section])),
+            ]),
+        };
+        assert!(ChunkData::new(root.clone()).is_err());
+        let mut chunk = ChunkData::new_1201(root).unwrap();
+        let state = BlockState {
+            name: "minecraft:oak_log".into(),
+            properties: [("axis".to_owned(), "z".to_owned())].into_iter().collect(),
+        };
+        let pos = BlockPos::new(-1, -64, 0);
+        assert_eq!(
+            chunk.set_block_data(pos, state.clone()).unwrap().name,
+            "minecraft:air"
+        );
+        let saved = chunk.into_nbt();
+        let Some(Tag::List(sections)) = saved.tag.get("sections") else {
+            panic!()
+        };
+        let Some(Tag::List(palette)) = sections[0].get("block_states").unwrap().get("palette")
+        else {
+            panic!()
+        };
+        assert_eq!(
+            palette[1].get("Properties").unwrap().get("axis"),
+            Some(&Tag::String("z".into()))
+        );
+        let loaded = ChunkData::new_1201(saved).unwrap();
+        assert_eq!(loaded.block(pos).unwrap(), Some(state));
+        assert_eq!(
+            loaded.block(pos.offset(-1, 0, 0)).unwrap().unwrap().name,
+            "minecraft:air"
+        );
+    }
+
     #[test]
     fn palette_grows_across_word_widths_and_compacts_to_uniform() {
         let mut palette = PalettedContainer::uniform(Tag::Int(0), 4096, 4).unwrap();

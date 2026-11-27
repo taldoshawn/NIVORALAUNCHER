@@ -11,6 +11,9 @@ pub(super) enum Kind {
     Aspect,
     DisplayHz,
     CacheBudget,
+    MemoryTarget,
+    MaxFps,
+    TextureBudget,
     WorkerLimit,
     Renderer,
     RenderScale,
@@ -32,12 +35,9 @@ impl Launcher {
         crate::platform::hide();
         self.catalog.editing = None;
         let device = if matches!(kind, Kind::Renderer) {
-            self.renderer.as_ref().map(|r| {
-                format!(
-                    "GPU: {} · {}",
-                    r.info.name, r.info.driver
-                )
-            })
+            self.renderer
+                .as_ref()
+                .map(|r| format!("GPU: {} · {}", r.info.name, r.info.driver))
         } else {
             None
         };
@@ -45,10 +45,20 @@ impl Launcher {
         let (title, help, choices) = match kind {
             Kind::GameVersion => (
                 "Selecionar versão",
-                "1.8.9: servidores multiplayer. Mundos locais usam 26.3. Outras versões ainda não estão implementadas.",
+                "1.8.9 inclui criativo plano experimental e servidores. A versão 26.3 inclui o singleplayer completo.",
                 vec![
-                    ("26.3".into(), "Mundos locais e multiplayer 26.3".into(), Action::ChooseGameVersion(false), !c.legacy18),
-                    ("1.8.9".into(), "Multiplayer 1.8–1.8.9 • protocolo 47".into(), Action::ChooseGameVersion(true), c.legacy18),
+                    (
+                        "26.3".into(),
+                        "Mundos locais e multiplayer 26.3".into(),
+                        Action::ChooseGameVersion(false),
+                        !c.legacy18,
+                    ),
+                    (
+                        "1.8.9".into(),
+                        "Criativo plano experimental • multiplayer 1.8–1.8.9".into(),
+                        Action::ChooseGameVersion(true),
+                        c.legacy18,
+                    ),
                 ],
             ),
             Kind::Aspect => (
@@ -71,10 +81,66 @@ impl Launcher {
                 })
                 .collect(),
             ),
+            Kind::MaxFps => {
+                let opts = horizon_client::settings::Settings::load(
+                    &c.game_home(&self.home).join("options.txt"),
+                );
+                (
+                    "Limite de FPS",
+                    "O limite funciona com VSync ligado ou desligado. Sem limite exige mais energia e pode aquecer o aparelho.",
+                    [30, 45, 60, 90, 120, 144, 165, 240, 260]
+                        .into_iter()
+                        .map(|fps| {
+                            (
+                                if fps == 260 {
+                                    "Sem limite".into()
+                                } else {
+                                    format!("{fps} FPS")
+                                },
+                                String::new(),
+                                Action::ChooseMaxFps(fps),
+                                opts.max_fps == fps,
+                            )
+                        })
+                        .collect(),
+                )
+            }
+            Kind::TextureBudget => {
+                let opts = horizon_client::settings::Settings::load(
+                    &c.game_home(&self.home).join("options.txt"),
+                );
+                (
+                    "Memória das texturas de blocos",
+                    "Orçamento do nível principal das texturas de terreno. Mipmaps, interface e outras alocações ficam fora. Preserva o mínimo de 16 px. Aplica ao jogar.",
+                    [0, 16, 32, 64, 128, 256, 512].into_iter().map(|mib| (
+                        if mib == 0 { "Automático (256 MiB)".into() } else { format!("{mib} MiB") },
+                        String::new(), Action::ChooseTextureBudget(mib), opts.horizon.texture_budget_mib == mib,
+                    )).collect(),
+                )
+            }
+            Kind::MemoryTarget => (
+                "Alvo de RAM do processo",
+                "Reduz a distância de visão sob pressão de RAM, com recuperação gradual. Não é um teto rígido: mundo, simulação, mods e GPU podem exceder o alvo. Aplica ao jogar.",
+                [0, 512, 768, 1024, 1536, 2048, 3072, 4096, 6144, 8192]
+                    .into_iter()
+                    .map(|mib| {
+                        (
+                            if mib == 0 {
+                                "Desativado".into()
+                            } else {
+                                format!("{mib} MiB")
+                            },
+                            String::new(),
+                            Action::ChooseMemoryTarget(mib),
+                            c.memory_target_mib == mib,
+                        )
+                    })
+                    .collect(),
+            ),
             Kind::CacheBudget => (
-                "Reusable RAM cache",
-                "Decoded sounds (80%) and empty mesh buffers (20%). Recreated at the same quality. Smaller budgets can increase CPU work. Not total RAM/VRAM. Applies on next Play.",
-                [0, 16, 32, 64, 128, 256]
+                "Limite dos caches de RAM",
+                "Sons decodificados (80%) e buffers de malha vazios (20%). Limite destes caches, não da RAM total ou GPU. Valores baixos podem aumentar trabalho da CPU. Aplica ao jogar.",
+                [0, 16, 32, 64, 128, 256, 512, 1024]
                     .into_iter()
                     .map(|mib| {
                         (
@@ -496,6 +562,35 @@ impl Chooser {
 }
 
 impl Chooser {
+    pub(super) fn multiplayer() -> Self {
+        Self {
+            title: "Multiplayer e rede local",
+            help: "LAN: mesmo Wi-Fi, nomes diferentes. No mundo do host, abra para LAN e use IP:porta.",
+            device: None,
+            choices: vec![
+                (
+                    "Escolher perfil local".into(),
+                    "Jogar em LAN ou servidor offline".into(),
+                    Action::OfflineAccount,
+                    false,
+                ),
+                (
+                    "Endereço do servidor".into(),
+                    "Salvar IP:porta para entrar ao jogar".into(),
+                    Action::ServerAddress,
+                    false,
+                ),
+                (
+                    "Abrir o jogo".into(),
+                    "Multiplayer no menu do jogo; servidores autenticados exigem conta Java".into(),
+                    Action::Play,
+                    false,
+                ),
+            ],
+            scroll: 0.0,
+        }
+    }
+
     pub(super) fn catalog_sources(page: crate::catalog::Page) -> Self {
         use crate::{catalog::Page, shader_catalog::Origin};
         let kind=match page {Page::Mods=>horizon_client::content_files::Kind::Mods,Page::Shaders=>horizon_client::content_files::Kind::Shaders,_=>horizon_client::content_files::Kind::Packs};

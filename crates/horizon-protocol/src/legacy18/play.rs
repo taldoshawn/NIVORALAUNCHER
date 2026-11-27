@@ -8,6 +8,11 @@ use crate::{
 #[derive(Debug, PartialEq)]
 pub enum Packet<'a> {
     KeepAlive(i32),
+    Time {
+        game_time: i64,
+        day_time: i64,
+        ticking: bool,
+    },
     Health {
         health: f32,
         food: i32,
@@ -76,6 +81,17 @@ impl<'a> Packet<'a> {
                 level_type: r.string(16)?,
                 reduced_debug: r.bool()?,
             },
+            0x03 => {
+                let game_time = r.i64()?;
+                let signed_day = r.i64()?;
+                Self::Time {
+                    game_time,
+                    day_time: signed_day
+                        .checked_abs()
+                        .ok_or_else(|| Error::new("invalid legacy day time"))?,
+                    ticking: signed_day >= 0,
+                }
+            }
             0x06 => {
                 let health = r.f32()?;
                 let food = r.varint()?;
@@ -253,6 +269,25 @@ impl Pose {
 #[cfg(test)]
 mod legacy_update_tests {
     use super::*;
+    #[test]
+    fn server_sky_clock_decodes_running_and_frozen_time() {
+        for (signed, day, ticking) in [
+            (6000_i64, 6000, true),
+            (-18000, 18000, false),
+            (-1, 1, false),
+        ] {
+            let bytes = [54321_i64.to_be_bytes(), signed.to_be_bytes()].concat();
+            assert_eq!(
+                Packet::decode(3, &bytes).unwrap(),
+                Packet::Time {
+                    game_time: 54321,
+                    day_time: day,
+                    ticking
+                }
+            );
+            assert!(Packet::decode(3, &bytes[..15]).is_err());
+        }
+    }
     #[test]
     fn block_updates_decode_legacy_axes_and_reject_invalid_states() {
         assert_eq!(

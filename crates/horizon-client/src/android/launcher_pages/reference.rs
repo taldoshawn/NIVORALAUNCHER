@@ -140,7 +140,7 @@ impl Launcher {
             103.0 * s,
             58.0 * s,
             MUTED,
-            "Minecraft no Android",
+            "Seu mundo começa aqui",
         );
         let pages = [
             (Page::Play, Icon::Play, "Jogar"),
@@ -262,174 +262,214 @@ impl Launcher {
     }
     fn reference_home(&mut self, ui: &mut Ui, l: Layout) {
         let Layout { s, x, w } = l;
+        ui.text(
+            Face::SemiBold,
+            24.0 * s,
+            x,
+            27.0 * s,
+            WHITE,
+            "Seu próximo mundo.",
+        );
+        ui.text(
+            Face::Regular,
+            14.0 * s,
+            x,
+            61.0 * s,
+            MUTED,
+            "Explore, construa e jogue do seu jeito.",
+        );
+
         let hero = [x, 106.0 * s, w, 264.0 * s];
         picture(ui, false, hero);
-        // Quiet left-to-right scrim protects text contrast on bright shader/landscape artwork.
-        // Keep the right side unobstructed to show the actual launcher illustration.
-        for (i, alpha) in [190_u8, 128, 74, 28].into_iter().enumerate() {
-            ui.fill(
-                x + i as f32 * (w * 0.13), hero[1],
-                w * 0.13 + 1.0, hero[3],
-                color::hex(0x0A0920, alpha),
-            );
-        }
-        ui.border(x, hero[1], w, hero[3], 28.0 * s, color::hex(0x75609A, 160));
-        ui.rounded(x + 33.0 * s, hero[1] + 37.0 * s, 4.0 * s, 16.0 * s, 2.0 * s, ACCENT);
-        ui.text(Face::SemiBold, 12.0 * s, x + 47.0 * s, hero[1] + 38.0 * s,
-            color::hex(0xD3C8F8, 255), "NIVORA  /  RUST CLIENT");
-        ui.text(
-            Face::Medium,
-            17.0 * s,
-            x + 34.0 * s,
-            179.0 * s,
-            color::hex(0xC0BCC9, 255),
-            "M I N E C R A F T   J A V A",
+        // A quiet left panel keeps the title readable over any part of the art.
+        ui.rounded(
+            x + 18.0 * s,
+            126.0 * s,
+            470.0 * s,
+            224.0 * s,
+            16.0 * s,
+            color::hex(0x0D1024, 224),
         );
-        let version = if self.catalog.config.legacy18 {
-            "1.8.9"
+        ui.border(x, hero[1], w, hero[3], 28.0 * s, LINE);
+        let legacy = self.catalog.config.legacy18;
+        let version = if legacy { "1.8.9" } else { "26.3" };
+        let installed = horizon_client::official_install::ready(&self.home);
+        let state = if installed {
+            "PRONTO PARA JOGAR"
         } else {
-            "26.3"
+            "PREPARE SEU JOGO"
         };
-        ui.text_clipped(
-            Face::Bold,
-            42.0 * s,
+        ui.rounded(
             x + 34.0 * s,
-            205.0 * s,
-            (w - 68.0 * s).max(1.0),
+            145.0 * s,
+            6.0 * s,
+            6.0 * s,
+            3.0 * s,
+            color::hex(if installed { 0x5FD39A } else { 0xF5B45A }, 255),
+        );
+        ui.text(
+            Face::SemiBold,
+            12.0 * s,
+            x + 48.0 * s,
+            140.0 * s,
+            color::hex(0xD6CFF0, 255),
+            state,
+        );
+        ui.text(
+            Face::Bold,
+            38.0 * s,
+            x + 34.0 * s,
+            172.0 * s,
             WHITE,
             &format!("Minecraft {version}"),
         );
-        let renderer = if self.catalog.config.renderer == crate::catalog::RendererMode::OpenGl {
-            "OpenGL"
-        } else {
-            "Vulkan"
-        };
-        let fps = if self.catalog.config.max_fps_mode {
-            "Limite 260 FPS"
-        } else if self.catalog.config.battery_perf_mode {
-            "Limite 60 FPS"
-        } else {
-            "Limite 120 FPS"
-        };
-        let mut cx = x + 34.0 * s;
-        for (text, icon, action) in [
-            (version, Icon::Cube, Action::GameVersion),
-            (renderer, Icon::Monitor, Action::Renderer),
-            (fps, Icon::Bolt, Action::ToggleMaxFpsMode),
-        ] {
-            let cw = (ui.measure(Face::SemiBold, 16.0 * s, text) + 52.0 * s).max(95.0 * s);
-            let r = [cx, 273.0 * s, cw, 41.0 * s];
-            rect(ui, r, 21.0 * s);
-            ui.icon(icon, cx + 14.0 * s, r[1] + 12.0 * s, 18.0 * s, WHITE);
-            ui.text(
-                Face::SemiBold,
-                16.0 * s,
-                cx + 40.0 * s,
-                r[1] + 11.0 * s,
-                WHITE,
-                text,
-            );
-            self.targets.push((r, action));
-            cx += cw + 12.0 * s;
-        }
-        let play = [x + w - 300.0 * s, 255.0 * s, 196.0 * s, 71.0 * s];
-        // A clear primary action with deliberate contrast to the secondary selector.
-        ui.rounded(play[0] - 3.0 * s, play[1] - 3.0 * s, play[2] + 6.0 * s, play[3] + 6.0 * s,
-            21.0 * s, color::hex(0x6B3AD6, 65));
-        purple(ui, play, 19.0 * s, true);
-        ui.icon(
-            Icon::Play,
-            play[0] + 33.0 * s,
-            play[1] + 21.0 * s,
-            27.0 * s,
-            WHITE,
-        );
-        let installed = horizon_client::official_install::ready(&self.home);
         ui.text(
-            Face::SemiBold,
-            25.0 * s,
-            play[0] + 82.0 * s,
-            play[1] + 20.0 * s,
+            Face::Regular,
+            14.0 * s,
+            x + 34.0 * s,
+            226.0 * s,
             WHITE,
-            if self.launching {
-                "Abrindo…"
-            } else if installed {
-                "Jogar"
+            if legacy {
+                "Criativo plano • servidores 1.8–1.8.9 • experimental"
             } else {
-                "Instalar"
+                "Mundos singleplayer • multiplayer • LAN"
             },
         );
-        self.targets.push((play, Action::Play));
-        let choose = [play[0] + 210.0 * s, 255.0 * s, 67.0 * s, 71.0 * s];
-        rect(ui, choose, 19.0 * s);
+        let play = [x + 34.0 * s, 273.0 * s, 190.0 * s, 55.0 * s];
+        purple(ui, play, 12.0 * s, true);
         ui.icon(
-            Icon::ChevronDown,
-            choose[0] + 22.0 * s,
-            choose[1] + 26.0 * s,
+            Icon::Play,
+            play[0] + 22.0 * s,
+            play[1] + 16.0 * s,
             23.0 * s,
             WHITE,
         );
-        self.targets.push((choose, Action::GameVersion));
-        let notice = crate::updater::public_notice();
-        if !notice.is_empty() {
-            ui.text_clipped(
-                Face::Medium,
-                13.0 * s,
-                x + 8.0 * s,
-                376.0 * s,
-                (w - 16.0 * s).max(1.0),
-                WHITE,
-                &format!("Comunicado: {notice}"),
-            );
-        }
-        let gap = 24.0 * s;
+        label(
+            ui,
+            21.0 * s,
+            [play[0] + 38.0 * s, play[1], play[2] - 38.0 * s, play[3]],
+            if self.launching {
+                "Abrindo…"
+            } else if installed {
+                "Jogar agora"
+            } else {
+                "Instalar"
+            },
+            true,
+        );
+        self.targets.push((play, Action::Play));
+        small_button(
+            ui,
+            &mut self.targets,
+            [x + 236.0 * s, play[1], 120.0 * s, play[3]],
+            &format!("{version}  ▾"),
+            Action::GameVersion,
+            s,
+            false,
+        );
+        small_button(
+            ui,
+            &mut self.targets,
+            [x + 368.0 * s, play[1], 100.0 * s, play[3]],
+            "Perfil",
+            Action::Profile,
+            s,
+            false,
+        );
+
+        let gap = 16.0 * s;
         let cw = (w - gap * 2.0) / 3.0;
-        for (i, (name, icon, page, kind)) in [
-            ("Mods", Icon::Puzzle, Page::Mods, Kind::Mods),
-            ("Pacotes de recursos", Icon::Packs, Page::Packs, Kind::Packs),
-            ("Shaders", Icon::Monitor, Page::Shaders, Kind::Shaders),
+        let mods = self
+            .catalog
+            .local
+            .iter()
+            .filter(|item| item.kind == Kind::Mods && item.enabled)
+            .count();
+        let shaders = self
+            .catalog
+            .local
+            .iter()
+            .filter(|item| item.kind == Kind::Shaders)
+            .count();
+        for (i, (title, detail, icon, action)) in [
+            (
+                "Mods do Modrinth",
+                format!("{mods} ativos • explorar catálogo"),
+                Icon::Puzzle,
+                Action::BrowseModrinth,
+            ),
+            (
+                "Jogue com amigos",
+                "Rede local e servidores offline".into(),
+                Icon::Gamepad,
+                Action::MultiplayerHelp,
+            ),
+            (
+                "Luz e atmosfera",
+                format!("{shaders} instalados • personalizar"),
+                Icon::Monitor,
+                Action::Page(Page::Shaders),
+            ),
         ]
         .into_iter()
         .enumerate()
         {
-            let r = [x + i as f32 * (cw + gap), 398.0 * s, cw, 98.0 * s];
-            rect(ui, r, 16.0 * s);
-            ui.rounded(r[0] + 14.0 * s, r[1] + 12.0 * s, 32.0 * s, 30.0 * s,
-                9.0 * s, color::hex(0x34234C, 255));
-            ui.fill(r[0] + 18.0 * s, r[1] + 2.0 * s, (cw - 36.0 * s).max(0.0),
-                2.0 * s, color::hex(0x8157CE, 120));
-            let inset = 18.0 * s;
-            ui.icon(icon, r[0] + inset + 5.0 * s, r[1] + 16.0 * s, 21.0 * s, WHITE);
-            ui.icon(Icon::ArrowRight, r[0] + cw - 31.0 * s, r[1] + 17.0 * s, 15.0 * s, MUTED);
-            ui.text_clipped(Face::SemiBold, 20.0 * s, r[0] + inset, r[1] + 43.0 * s,
-                cw - 2.0 * inset, WHITE, name);
-            let count = self.catalog.local.iter().filter(|item| item.kind == kind && item.enabled).count();
-            ui.text(Face::Regular, 14.0 * s, r[0] + inset, r[1] + 72.0 * s, MUTED,
-                &format!("{count} ativos"));
-            self.targets.push((r, Action::Page(page)));
-        }
-        // Reuse existing maintenance flows, with stable touch targets on the home screen.
-        let tools_y = 506.0 * s;
-        let gap = 10.0 * s;
-        let width = (w - gap * 2.0) / 3.0;
-        for (i, (title, action)) in [
-            ("Diagnóstico", Action::Logs),
-            ("Ver atualizações", Action::CheckForUpdates),
-            ("Exportar relatório", Action::ExportDiagnostics),
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            small_button(
-                ui,
-                &mut self.targets,
-                [x + i as f32 * (width + gap), tools_y, width, 30.0 * s],
-                title,
-                action,
-                s,
-                false,
+            let r = [x + i as f32 * (cw + gap), 390.0 * s, cw, 114.0 * s];
+            rect(ui, r, 14.0 * s);
+            let ir = [r[0] + 16.0 * s, r[1] + 15.0 * s, 30.0 * s, 30.0 * s];
+            ui.rounded(
+                ir[0],
+                ir[1],
+                ir[2],
+                ir[3],
+                8.0 * s,
+                color::hex(0x28203F, 255),
             );
+            ui.icon(
+                icon,
+                ir[0] + 5.0 * s,
+                ir[1] + 5.0 * s,
+                20.0 * s,
+                color::hex(0xBAA4FF, 255),
+            );
+            ui.text_clipped(
+                Face::SemiBold,
+                17.0 * s,
+                r[0] + 16.0 * s,
+                r[1] + 55.0 * s,
+                cw - 32.0 * s,
+                WHITE,
+                title,
+            );
+            ui.text_clipped(
+                Face::Regular,
+                12.0 * s,
+                r[0] + 16.0 * s,
+                r[1] + 83.0 * s,
+                cw - 32.0 * s,
+                MUTED,
+                &detail,
+            );
+            self.targets.push((r, action));
         }
+        let renderer = self.catalog.config.renderer.label();
+        ui.text_clipped(
+            Face::Regular,
+            12.0 * s,
+            x,
+            528.0 * s,
+            w,
+            MUTED,
+            &format!(
+                "{renderer}   /   Perfil {}   /   {}",
+                self.catalog.config.profile + 1,
+                if legacy {
+                    "Criativo plano experimental • progresso salvo neste perfil"
+                } else {
+                    "Para LAN offline, use um perfil local e a mesma rede Wi-Fi"
+                }
+            ),
+        );
     }
     fn reference_catalog(&mut self, ui: &mut Ui, l: Layout) {
         let Layout { s, x, w } = l;
@@ -541,7 +581,7 @@ impl Launcher {
         horizon_client::mod_list::remote::refresh(&self.home);
         // Real results, including built-in native mods. No decorative fake install entries.
         let mut rows: Vec<(String, String, String, Action, Action, bool)> = Vec::new();
-        if page == Page::Mods {
+        if page == Page::Mods && origin == crate::shader_catalog::Origin::Horizon {
             let q = self.catalog.query.to_lowercase();
             for (id, title, description) in horizon_client::mod_list::ANDROID_BUNDLED {
                 if !horizon_client::mod_list::remote::available(id) { continue; }
@@ -576,8 +616,8 @@ impl Launcher {
                 self.catalog.download_label(p).is_some(),
             ));
         }
-        let local_page = page == Page::Mods
-            || (page == Page::Shaders && origin == crate::shader_catalog::Origin::Horizon);
+        let local_page = matches!(page, Page::Mods | Page::Shaders)
+            && origin == crate::shader_catalog::Origin::Horizon;
         let total_pages = if local_page {
             rows.len()
                 .div_ceil(crate::catalog::CATALOG_PAGE_SIZE)
@@ -695,11 +735,11 @@ impl Launcher {
             ui,
             13.0 * s,
             [x + w * 0.5 - 35.0 * s, y, 70.0 * s, 32.0 * s],
-            &format!(
-                "{} / {}",
-                self.catalog.offset / crate::catalog::CATALOG_PAGE_SIZE + 1,
-                total_pages
-            ),
+            &if local_page {
+                format!("{} / {total_pages}", self.catalog.offset / crate::catalog::CATALOG_PAGE_SIZE + 1)
+            } else {
+                format!("Pág. {}", self.catalog.offset / crate::catalog::CATALOG_PAGE_SIZE + 1)
+            },
             true,
         );
         small_button(

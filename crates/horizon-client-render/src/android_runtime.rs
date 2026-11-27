@@ -1,6 +1,7 @@
 //! Android renderer and platform policy.
 #[path = "graphics_startup.rs"]
 pub mod graphics_startup;
+pub mod memory_budget;
 use crate::android_gamepad::{Devices, InputMode};
 use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(target_os = "android")]
@@ -93,8 +94,18 @@ static ATLAS_LIMIT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32:
 pub fn configure_atlas_limit(limit: u32) {
     ATLAS_LIMIT.store(limit, Ordering::Relaxed);
 }
+static COMPACT_ATLAS: AtomicBool = AtomicBool::new(false);
+pub fn configure_compact_atlas(compact: bool) {
+    COMPACT_ATLAS.store(compact, Ordering::Relaxed);
+}
 pub fn atlas_limit() -> u32 {
-    ATLAS_LIMIT.load(Ordering::Relaxed)
+    ATLAS_LIMIT
+        .load(Ordering::Relaxed)
+        .min(if COMPACT_ATLAS.load(Ordering::Relaxed) {
+            4096
+        } else {
+            16384
+        })
 }
 // Zero preserves the engine's automatic/manual worker selection.
 static WORKER_LIMIT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);

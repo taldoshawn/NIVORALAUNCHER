@@ -4288,7 +4288,9 @@ impl Game<'_> {
                 forced: self.streaming.forced.iter().copied().collect(),
                 // Filled from the `PORTAL` tickets by `update`.
                 portal: Vec::new(),
-                view_distance: self.settings.render_distance.clamp(2, 32),
+                view_distance: horizon_client::android_runtime::memory_budget::render_distance(
+                    self.settings.render_distance,
+                ).clamp(2, 32),
                 simulation_distance: self.settings.simulation_distance.max(2),
             }
         });
@@ -11547,6 +11549,7 @@ impl Game<'_> {
                 use horizon_client::clipboard::Clipboard;
                 self.clipboard.set(&text);
             }
+            Action::ClassicFlat189 => self.open_classic_flat_189()?,
             Action::Play { folder } => self.open_world(&folder, None, None, false, None)?,
             Action::Create {
                 folder,
@@ -13620,7 +13623,9 @@ impl Game<'_> {
         // LocalPlayer.refreshChatAbilities: the chat shows what the Chat option allows.
         let abilities = self.chat_abilities();
         self.ui.chat.set_abilities(&self.gui.atlas.font, abilities);
-        self.streaming.radius = self.settings.render_distance;
+        self.streaming.radius = horizon_client::android_runtime::memory_budget::render_distance(
+            self.settings.render_distance,
+        );
         // Options.biomeBlendRadius, ambientOcclusion and cutoutLeaves:
         // LevelExtractor.allChanged when they change.
         let (s, st) = (&self.settings, &self.streaming);
@@ -16025,6 +16030,14 @@ impl Game<'_> {
         }
     }
     fn update_world(&mut self) {
+        #[cfg(target_os = "android")]
+        if self.streaming.radius >= 0 {
+            let requested = self.remote.as_ref().map_or(self.settings.render_distance, |r| {
+                self.settings.render_distance.min(r.view_distance.saturating_add(1)).max(2)
+            });
+            self.streaming.radius =
+                horizon_client::android_runtime::memory_budget::render_distance(requested);
+        }
         if let Err(e) = self.poll_remote() {
             log::warn!("Horizon: {e}");
         }
@@ -18292,7 +18305,9 @@ impl Game<'_> {
                     if let Some(server) = &self.integrated {
                         server.set_paused(self.pause);
                         server.set_distances(
-                            self.settings.render_distance,
+                            horizon_client::android_runtime::memory_budget::render_distance(
+                                self.settings.render_distance,
+                            ),
                             self.settings.simulation_distance,
                             self.settings.entity_distance,
                         );
@@ -19078,6 +19093,7 @@ enum LoaderMsg {
 }
 
 enum PendingWorldEntry {
+    ClassicFlat189,
     Local {
         folder: String,
         name: Option<String>,
@@ -19174,6 +19190,7 @@ impl Game<'_> {
             self.reload_packs();
         }
         match self.pending_entry.take() {
+            Some(PendingWorldEntry::ClassicFlat189) => self.open_classic_flat_189()?,
             Some(PendingWorldEntry::Local {
                 folder,
                 name,

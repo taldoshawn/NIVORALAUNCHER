@@ -1970,6 +1970,7 @@ dependencies = [
  "horizon-core",
  "horizon-world",
  "ipconfig",
+ "serde",
  "serde_json",
  "sha1",
  "sha2",

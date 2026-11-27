@@ -293,6 +293,9 @@ pub(super) enum Action {
     ToggleLocal(usize),
     LocalOptions(usize),
     CatalogSources,
+    BrowseModrinth,
+    MultiplayerHelp,
+    ServerAddress,
     DeleteLocal(usize),
     ConfirmDeleteLocal,
     ConfirmExit,
@@ -358,6 +361,13 @@ pub(super) enum Action {
     ChooseDisplayHz(u16),
     CacheBudget,
     ChooseCacheBudget(u32),
+    MemoryTarget,
+    LowMemoryProfile,
+    ToggleCompactAtlas,
+    ChooseMemoryTarget(u32),
+    ChooseMaxFps(u32),
+    TextureBudget,
+    ChooseTextureBudget(u32),
     ToggleBundled(&'static str),
     WorldFiles,
     GameFiles,
@@ -1582,7 +1592,9 @@ impl Launcher {
                 );
             }
 
-            let bundled: Vec<_> = if page == Page::Mods {
+            let bundled: Vec<_> = if page == Page::Mods
+                && self.catalog.config.mod_source == crate::shader_catalog::Origin::Horizon
+            {
                 let query = self.catalog.query.trim().to_lowercase();
                 horizon_client::mod_list::ANDROID_BUNDLED
                     .into_iter()
@@ -1609,7 +1621,8 @@ impl Launcher {
                             .any(|(id, _, _)| *id == p.id))
                 })
                 .collect();
-            let is_horizon_paged = page == Page::Mods
+            let is_horizon_paged = (page == Page::Mods
+                && self.catalog.config.mod_source == crate::shader_catalog::Origin::Horizon)
                 || (page == Page::Shaders
                     && self.catalog.config.shader_source == crate::shader_catalog::Origin::Horizon);
             let total_horizon_items = bundled.len() + catalog_rows.len();
@@ -4587,10 +4600,10 @@ impl Launcher {
         match cat {
             SettingsCategory::Video => {
                 let c = &self.catalog.config;
-                let count = 17;
+                const ROW_COUNT: usize = 20;
                 let extra_ime = if ime_top_dp.is_some() { 180.0 } else { 0.0 };
                 let max_scroll =
-                    (count as f32 * step_y + extra_ime - (list_bottom - list_top)).max(0.0);
+                    (ROW_COUNT as f32 * step_y + extra_ime - (list_bottom - list_top)).max(0.0);
                 self.catalog.scroll = self.catalog.scroll.clamp(0.0, max_scroll);
                 self.list_view = Some([list_top, list_bottom, max_scroll]);
 
@@ -4601,6 +4614,11 @@ impl Launcher {
                     self.catalog.render_scale_text.clone()
                 } else {
                     format!("{res_pct}%")
+                };
+                let texture_str = if opts.horizon.texture_budget_mib == 0 {
+                    "Auto (256 MiB) v".to_owned()
+                } else {
+                    format!("{} MiB v", opts.horizon.texture_budget_mib)
                 };
                 let hz_str = format!("{} v", c.device.display_label());
                 let aspect_str = format!("{} v", c.screen.aspect.label());
@@ -4613,7 +4631,7 @@ impl Launcher {
                 let fov_frac = ((opts.fov - 30.0) / 80.0).clamp(0.0, 1.0);
                 let preset_str = format!("{} ›", capitalize(&opts.graphics_preset));
                 let fps_str = if opts.max_fps >= 260 {
-                    "Unlimited ›".to_owned()
+                    "Sem limite ›".to_owned()
                 } else {
                     format!("{} FPS ›", opts.max_fps)
                 };
@@ -4624,7 +4642,7 @@ impl Launcher {
                 };
                 let game_anim_off = c.disable_game_animations || touch_cfg.disable_game_animations;
 
-                let rows: [(&str, &str, SettingControl<'_>); 17] = [
+                let rows: [(&str, &str, SettingControl<'_>); ROW_COUNT] = [
                     (
                         "DISPLAY, RESOLUTION & RENDERER PIPELINE",
                         "Hardware GPU backend, 3D resolution scale, refresh rate & display geometry",
@@ -4721,14 +4739,29 @@ impl Launcher {
                         SettingControl::Button(&preset_str, Action::CycleGraphicsPreset, false),
                     ),
                     (
+                        "Memória das texturas de blocos",
+                        "Orçamento do nível principal de terreno; aplica ao jogar",
+                        SettingControl::Button(&texture_str, Action::TextureBudget, false),
+                    ),
+                    (
                         "Limite de FPS",
                         "Limite os frames para economizar energia ou aproveitar uma tela rápida",
                         SettingControl::Button(&fps_str, Action::CycleMaxFps, false),
                     ),
                     (
-                        "Sincronização vertical e nuvens",
-                        "Tap switch to toggle VSync, or cycle Clouds in in-game video options",
+                        "Sincronização vertical",
+                        "Sincroniza os frames com a tela; o limite de FPS é independente",
                         SettingControl::Toggle(opts.vsync, Action::ToggleVsync),
+                    ),
+                    (
+                        "Nuvens",
+                        "Desligue para reduzir o trabalho da GPU",
+                        SettingControl::Button(&clouds_str, Action::CycleClouds, false),
+                    ),
+                    (
+                        "Iluminação suave",
+                        "Desligue para reduzir o custo de geração das malhas",
+                        SettingControl::Toggle(opts.smooth_lighting, Action::ToggleSmoothLighting),
                     ),
                     (
                         "Menu Background Blur",
@@ -4741,7 +4774,6 @@ impl Launcher {
                         SettingControl::Toggle(game_anim_off, Action::ToggleGameAnimations),
                     ),
                 ];
-                let _ = clouds_str;
 
                 ui.set_clip(Some([
                     content_x - 2.0,
@@ -4772,16 +4804,16 @@ impl Launcher {
             }
             SettingsCategory::Launcher => {
                 let c = &self.catalog.config;
-                let count = 12;
+                const ROW_COUNT: usize = 15;
                 let extra_ime = if ime_top_dp.is_some() { 180.0 } else { 0.0 };
                 let max_scroll =
-                    (count as f32 * step_y + extra_ime - (list_bottom - list_top)).max(0.0);
+                    (ROW_COUNT as f32 * step_y + extra_ime - (list_bottom - list_top)).max(0.0);
                 if self.catalog.editing == Some("server")
                     && let Some(ime_y) = ime_top_dp
                 {
-                    let server_y = list_top + 10.0 * step_y - self.catalog.scroll;
+                    let server_y = list_top + 13.0 * step_y - self.catalog.scroll;
                     if server_y + card_h > ime_y - 12.0 {
-                        self.catalog.scroll = (list_top + 10.0 * step_y + card_h - (ime_y - 16.0))
+                        self.catalog.scroll = (list_top + 13.0 * step_y + card_h - (ime_y - 16.0))
                             .clamp(0.0, max_scroll);
                     }
                 }
@@ -4797,6 +4829,11 @@ impl Launcher {
                 } else {
                     format!("{} threads v", c.worker_limit)
                 };
+                let memory_str = if c.memory_target_mib == 0 {
+                    "Desativado v".to_owned()
+                } else {
+                    format!("{} MiB v", c.memory_target_mib)
+                };
                 let cache_str = if c.cache_budget_mib == 0 {
                     "Default (80 MiB) v".to_owned()
                 } else {
@@ -4809,7 +4846,7 @@ impl Launcher {
                 };
                 let game_anim_off = c.disable_game_animations || touch_cfg.disable_game_animations;
 
-                let rows: [(&str, &str, SettingControl<'_>); 12] = [
+                let rows: [(&str, &str, SettingControl<'_>); ROW_COUNT] = [
                     (
                         "APPEARANCE, DPI SCALING & MOTION",
                         "Material 3 Expressive theme studio, adaptive phone DPI scaling & animation toggles",
@@ -4861,6 +4898,21 @@ impl Launcher {
                         "Chunk worker thread ceiling",
                         "Background worldgen and chunk meshing worker limit",
                         SettingControl::Button(&worker_str, Action::WorkerLimit, false),
+                    ),
+                    (
+                        "Perfil para celular com 2 GB",
+                        "Aplica visão de 4 chunks, escala 50%, FPS sem limite e desativa shaders; tudo editável",
+                        SettingControl::Button("Aplicar perfil leve", Action::LowMemoryProfile, false),
+                    ),
+                    (
+                        "Atlas de interface compacto",
+                        "Reduz texturas de interface para até 4096 px. Aplica na próxima abertura do app",
+                        SettingControl::Toggle(c.compact_atlas, Action::ToggleCompactAtlas),
+                    ),
+                    (
+                        "Alvo de RAM do processo",
+                        "Ajusta a visão automaticamente sob pressão de RAM; não é um teto rígido",
+                        SettingControl::Button(&memory_str, Action::MemoryTarget, false),
                     ),
                     (
                         "Limite do cache de memória",
@@ -6001,7 +6053,7 @@ impl Launcher {
                 } else if c.battery_perf_mode {
                     "Battery Saver Active"
                 } else if c.max_fps_mode {
-                    "260 FPS Uncapped"
+                    "FPS sem limite"
                 } else {
                     "Balanced Default"
                 };
@@ -6023,8 +6075,8 @@ impl Launcher {
                         SettingControl::Toggle(c.battery_perf_mode, Action::ToggleBatteryPerf),
                     ),
                     (
-                        "Max FPS Mode (Uncapped 260 FPS)",
-                        "Disables VSync, unlocks framerate ceiling and requests maximum display Hz",
+                        "FPS sem limite",
+                        "Desativa o limite de FPS do jogo e o VSync",
                         SettingControl::Toggle(c.max_fps_mode, Action::ToggleMaxFpsMode),
                     ),
                     (
@@ -6355,28 +6407,20 @@ impl Launcher {
                     s.fov = (s.fov + delta).clamp(30.0, 110.0);
                 });
             }
-            Some(Action::CycleMaxFps) => {
-                let mut now_uncapped = false;
+            Some(Action::CycleMaxFps) => self.open_chooser(chooser::Kind::MaxFps),
+            Some(Action::ChooseMaxFps(fps)) => {
+                let fps = fps.clamp(10, 260);
+                self.catalog.config.max_fps_mode = fps >= 260;
+                self.catalog.config.battery_perf_mode = false;
+                self.catalog.config.save(&self.home)?;
                 self.modify_game_settings(|s| {
-                    s.max_fps = match s.max_fps {
-                        0..=45 => 60,
-                        46..=75 => 90,
-                        76..=105 => 120,
-                        106..=200 => 260,
-                        _ => 31,
-                    };
-                    if s.max_fps >= 260 {
-                        s.vsync = false;
-                        s.horizon.present_mode = horizon_client::graphics::PresentMode::Immediate;
-                        s.inactivity_fps_limit = "minimized".into();
-                        now_uncapped = true;
+                    s.max_fps = fps;
+                    s.horizon.battery = false;
+                    if fps >= 260 {
+                        horizon_client::graphics::apply_uncapped_profile(s);
                     }
                 });
-                self.catalog.config.max_fps_mode = now_uncapped;
-                if now_uncapped {
-                    self.catalog.config.battery_perf_mode = false;
-                }
-                let _ = self.catalog.config.save(&self.home);
+                self.chooser = None;
             }
             Some(Action::CycleGraphicsPreset) => {
                 self.modify_game_settings(|s| {
@@ -6385,28 +6429,22 @@ impl Launcher {
                         "fancy" => "fabulous".into(),
                         _ => "fast".into(),
                     };
+                    horizon_client::options_ui::apply_preset(s);
                 });
             }
             Some(Action::ToggleVsync) => {
-                let mut vsync_now = false;
-                let mut fps_now = 120;
+                self.catalog.config.max_fps_mode = false;
+                self.catalog.config.battery_perf_mode = false;
+                self.catalog.config.save(&self.home)?;
                 self.modify_game_settings(|s| {
                     s.vsync = !s.vsync;
-                    vsync_now = s.vsync;
-                    fps_now = s.max_fps;
+                    s.horizon.battery = false;
                     s.horizon.present_mode = if s.vsync {
                         horizon_client::graphics::PresentMode::Fifo
                     } else {
                         horizon_client::graphics::PresentMode::Immediate
                     };
                 });
-                if vsync_now {
-                    self.catalog.config.max_fps_mode = false;
-                } else if fps_now >= 260 {
-                    self.catalog.config.max_fps_mode = true;
-                    self.catalog.config.battery_perf_mode = false;
-                }
-                let _ = self.catalog.config.save(&self.home);
             }
             Some(Action::ToggleSmoothLighting) => {
                 self.modify_game_settings(|s| s.smooth_lighting = !s.smooth_lighting);
@@ -6431,6 +6469,14 @@ impl Launcher {
                 if self.catalog.config.super_perf_mode {
                     self.catalog.config.battery_perf_mode = false;
                     self.catalog.config.renderer = crate::catalog::RendererMode::Vulkan;
+                    self.modify_game_settings(|s| {
+                        horizon_client::graphics::apply_preset(
+                            horizon_client::graphics::Preset::Performance, s,
+                        );
+                        s.horizon.battery = false;
+                        s.smooth_lighting = false;
+                        s.menu_blur = 0;
+                    });
                 }
                 horizon_client::ui_theme::motion::set_reduced_motion(
                     self.catalog.config.super_perf_mode || self.catalog.config.battery_perf_mode,
@@ -6450,6 +6496,14 @@ impl Launcher {
                     self.catalog.config.super_perf_mode = false;
                     self.catalog.config.max_fps_mode = false;
                     self.catalog.config.device.display_hz = 60;
+                    self.modify_game_settings(|s| {
+                        s.max_fps = 60;
+                        s.vsync = true;
+                        s.render_distance = s.render_distance.min(8);
+                        s.simulation_distance = s.simulation_distance.min(5);
+                        s.menu_blur = 0;
+                        s.horizon.present_mode = horizon_client::graphics::PresentMode::Fifo;
+                    });
                 } else if self.catalog.config.device.display_hz == 60 {
                     self.catalog.config.device.display_hz = 0;
                 }
@@ -6473,6 +6527,9 @@ impl Launcher {
                     if self.catalog.config.device.display_hz < 120 {
                         self.catalog.config.device.display_hz = 120;
                     }
+                    self.modify_game_settings(|s| {
+                        horizon_client::graphics::apply_uncapped_profile(s);
+                    });
                 } else {
                     if self.catalog.config.device.display_hz == 120 {
                         self.catalog.config.device.display_hz = 0;
@@ -6487,7 +6544,7 @@ impl Launcher {
                 self.catalog.config.save(&self.home)?;
                 self.catalog.config.apply_experimental_to_game(&self.home);
                 self.catalog.status = if self.catalog.config.max_fps_mode {
-                    "Modo de alto FPS ativado: limite de 260 FPS, sem VSync."
+                    "Modo de alto FPS ativado: sem limite de FPS, sem VSync."
                 } else {
                     "Modo equilibrado restaurado: limite de 120 FPS."
                 }
@@ -6506,6 +6563,8 @@ impl Launcher {
             }
             Some(Action::ToggleFastChunkUpload) => {
                 self.catalog.config.fast_chunk_upload = !self.catalog.config.fast_chunk_upload;
+                let budget = if self.catalog.config.fast_chunk_upload { 4096 } else { 2048 };
+                self.modify_game_settings(|s| s.horizon.upload_budget_kib = budget);
                 self.catalog.config.save(&self.home)?;
                 self.catalog.config.apply_experimental_to_game(&self.home);
                 self.catalog.status = if self.catalog.config.fast_chunk_upload {
@@ -6856,6 +6915,31 @@ impl Launcher {
                 self.configure_screen();
                 self.chooser = None;
             }
+            Some(Action::LowMemoryProfile) => {
+                self.catalog.config.apply_low_memory_profile(&self.home);
+                self.catalog.config.save(&self.home)?;
+                crate::device_runtime::configure(self.catalog.config.device);
+                crate::display::set_scale(self.catalog.config.render_scale);
+                self.catalog.status = "Perfil de 2 GB aplicado: visão 4, simulação 5, cache 16 MiB, um worker, alvo 768 MiB, escala 50%, FPS sem limite. Reabra o app para reduzir o atlas. Você pode ajustar tudo depois.".into();
+            }
+            Some(Action::ToggleCompactAtlas) => {
+                self.catalog.config.compact_atlas ^= true;
+                self.catalog.config.save(&self.home)?;
+                self.catalog.status = "Tamanho do atlas salvo. Reabra o app para reconstruir a interface com este limite.".into();
+            }
+            Some(Action::TextureBudget) => self.open_chooser(chooser::Kind::TextureBudget),
+            Some(Action::ChooseTextureBudget(mib)) => {
+                self.modify_game_settings(|s| s.horizon.texture_budget_mib = mib.min(16384));
+                self.chooser = None;
+                self.catalog.status = "Orçamento das texturas de blocos salvo. Aplica ao jogar; não limita toda a memória da GPU.".into();
+            }
+            Some(Action::MemoryTarget) => self.open_chooser(chooser::Kind::MemoryTarget),
+            Some(Action::ChooseMemoryTarget(mib)) => {
+                self.catalog.config.memory_target_mib = if mib == 0 { 0 } else { mib.clamp(512, 16384) };
+                self.catalog.config.save(&self.home)?;
+                self.chooser = None;
+                self.catalog.status = "Alvo de RAM salvo. Ao jogar, a visão se adapta ao uso do processo sem alterar sua distância salva. Não é um teto rígido.".into();
+            }
             Some(Action::CacheBudget) => self.open_chooser(chooser::Kind::CacheBudget),
             Some(Action::ChooseCacheBudget(mib)) => {
                 self.catalog.config.cache_budget_mib = mib.min(1024);
@@ -6962,6 +7046,27 @@ impl Launcher {
                 self.catalog.editing = None;
                 self.chooser = Some(super::chooser::Chooser::catalog_sources(self.catalog.page));
             }
+            Some(Action::BrowseModrinth) => {
+                self.catalog.page = Page::Mods;
+                self.catalog.config.mod_source = crate::shader_catalog::Origin::Modrinth;
+                self.catalog.config.save(&self.home)?;
+                self.catalog.query.clear();
+                self.catalog.offset = 0;
+                self.catalog.scroll = 0.0;
+                self.catalog.browse(&self.home);
+            }
+            Some(Action::MultiplayerHelp) => {
+                crate::platform::hide();
+                self.chooser = Some(super::chooser::Chooser::multiplayer());
+            }
+            Some(Action::ServerAddress) => {
+                self.chooser = None;
+                self.catalog.page = Page::Settings;
+                self.catalog.settings_category = SettingsCategory::Launcher;
+                self.catalog.scroll = 0.0;
+                self.catalog.editing = Some("server");
+                crate::platform::show(&self.catalog.config.server);
+            }
             Some(Action::LocalOptions(i)) => {
                 crate::platform::hide();
                 self.catalog.editing = None;
@@ -7022,6 +7127,7 @@ impl Launcher {
                 self.login.visible = true;
             }
             Some(Action::OfflineAccount | Action::MicrosoftAccount) => {
+                self.chooser = None;
                 self.login.providers = false;
                 self.login.offline = matches!(action, Some(Action::OfflineAccount));
                 self.login.ely = false;
@@ -7149,7 +7255,10 @@ impl Launcher {
                 self.catalog.offset = 0;
                 self.catalog.browse(&self.home);
             }
-            Some(Action::Play) => self.action(events)?,
+            Some(Action::Play) => {
+                self.chooser = None;
+                self.action(events)?;
+            }
             Some(Action::WardrobeKind(cape)) => {
                 self.wardrobe.set_tab(cape);
                 self.catalog.scroll = 0.0;
@@ -7234,7 +7343,8 @@ impl Launcher {
             }
             Some(Action::Install(i)) => self.catalog.install(&self.home, i),
             Some(Action::Next) => {
-                let is_horizon_paged = self.catalog.page == Page::Mods
+                let is_horizon_paged = (self.catalog.page == Page::Mods
+                    && self.catalog.config.mod_source == crate::shader_catalog::Origin::Horizon)
                     || (self.catalog.page == Page::Shaders
                         && self.catalog.config.shader_source
                             == crate::shader_catalog::Origin::Horizon);
@@ -7280,7 +7390,8 @@ impl Launcher {
                 if self.catalog.offset >= crate::catalog::CATALOG_PAGE_SIZE {
                     self.catalog.offset -= crate::catalog::CATALOG_PAGE_SIZE;
                     self.catalog.scroll = 0.0;
-                    let is_horizon_paged = self.catalog.page == Page::Mods
+                    let is_horizon_paged = (self.catalog.page == Page::Mods
+                    && self.catalog.config.mod_source == crate::shader_catalog::Origin::Horizon)
                         || (self.catalog.page == Page::Shaders
                             && self.catalog.config.shader_source
                                 == crate::shader_catalog::Origin::Horizon);
@@ -7360,6 +7471,7 @@ impl Launcher {
                         .join(format!("profile-{profile}"))
                 })?;
                 self.catalog.config.profile = profile;
+                self.catalog.config.ensure_uncapped_profile(&self.home);
                 super::ensure_fps_counter(&self.catalog.config.game_home(&self.home))?;
                 self.catalog.config.save(&self.home)?;
                 self.catalog.refresh(&self.home);
@@ -7416,6 +7528,13 @@ impl Launcher {
                 self.catalog.config.save(&self.home)?;
                 self.catalog.config.apply_experimental_to_game(&self.home);
                 self.modify_touch_settings(|t| t.disable_game_animations = next);
+                if !next {
+                    self.modify_game_settings(|s| {
+                        s.horizon.animated_textures = true;
+                        s.chunk_fade = 1.0;
+                        s.view_bobbing = true;
+                    });
+                }
                 self.catalog.status = if next {
                     "In-game animations disabled (static textures, instant FOV/menus, no view bobbing)."
                 } else {

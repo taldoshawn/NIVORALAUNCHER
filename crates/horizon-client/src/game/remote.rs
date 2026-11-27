@@ -744,7 +744,12 @@ impl Game<'_> {
             return Ok(());
         }
         self.join_world_rest()?;
-        if let Err(error) = self.join_server(address, name, None, cookies, lan) {
+        let result = self.join_server(address, name, None, cookies, lan);
+        self.show_connection_error(result)
+    }
+
+    fn show_connection_error(&mut self, result: Result<()>) -> Result<()> {
+        if let Err(error) = result {
             log::warn!("Horizon: could not join server: {error}");
             if self.title.is_none() {
                 self.title = Some(
@@ -757,12 +762,25 @@ impl Game<'_> {
             }
             let skip = self.settings.file.bool("skipMultiplayerWarning");
             if let Some(title) = &mut self.title {
+                title.legacy18 = self.options.legacy18;
                 title.skip_multiplayer_warning = skip;
                 title.failed(error);
             }
             self.capture(false);
         }
         Ok(())
+    }
+    pub(super) fn open_classic_flat_189(&mut self) -> Result<()> {
+        if self.defer_world_entry(super::PendingWorldEntry::ClassicFlat189)? {
+            return Ok(());
+        }
+        self.join_world_rest()?;
+        let directory = std::env::current_dir()?.join("legacy-worlds/1.8.9/classic-flat");
+        let result = (|| {
+            let pipe = horizon_protocol::legacy18::local_flat::open(directory)?;
+            self.join_server("classic-flat-189", &self.options.player_name(), Some(pipe), None, false)
+        })();
+        self.show_connection_error(result)
     }
     /// Join single player's integrated server through memory.
     pub(super) fn connect_local(
@@ -792,9 +810,9 @@ impl Game<'_> {
         let lang = Arc::new(horizon_client::net::load_language(&root));
         // Options.createInformation: what the server learns about this player,
         // sent again when one of those options changes.
-        let info = self
-            .settings
-            .client_information(client_view_distance(self.settings.render_distance));
+        let info = self.settings.client_information(client_view_distance(
+            horizon_client::android_runtime::memory_budget::render_distance(self.settings.render_distance),
+        ));
         if local.is_none() && !self.options.split_guest {
             horizon_client::crash::set_detail(
                 "Server",
@@ -815,6 +833,9 @@ impl Game<'_> {
         );
         self.server_packs_connect(local.is_none().then_some(address), user);
         let session = match local {
+            Some(pipe) if address == "classic-flat-189" => {
+                Session::connect_local_legacy(pipe, name, info.clone(), lang.clone(), root.clone())
+            }
             Some(pipe) => {
                 Session::connect_local(pipe, name, info.clone(), lang.clone(), root.clone())
             }
@@ -2984,9 +3005,9 @@ impl Game<'_> {
                     false,
                     horizon_client::level_loading::Reason::Other,
                 );
-                let info = self
-                    .settings
-                    .client_information(client_view_distance(self.settings.render_distance));
+                let info = self.settings.client_information(client_view_distance(
+                    horizon_client::android_runtime::memory_budget::render_distance(self.settings.render_distance),
+                ));
                 if let Some(r) = self.remote.as_mut() {
                     r.sent_info = info.clone();
                 }
@@ -5527,9 +5548,9 @@ impl Game<'_> {
         self.tick_bundle_hover();
         // Options.broadcastOptions: a changed render distance or Chat option
         // is sent again.
-        let info = self
-            .settings
-            .client_information(client_view_distance(self.settings.render_distance));
+        let info = self.settings.client_information(client_view_distance(
+            horizon_client::android_runtime::memory_budget::render_distance(self.settings.render_distance),
+        ));
         if let Some(r) = self.remote.as_mut()
             && r.joined
             && r.sent_info != info
@@ -9167,6 +9188,17 @@ impl Game<'_> {
             .filter_map(|(id, uuid)| Some((*id as u32, r.level_player_name(*id, uuid)?.to_owned())))
             .collect()
     }
+    /// Protocol 47 sends one clock and encodes a frozen sun with negative day time.
+    pub(super) fn sync_legacy_clock(&mut self, game_time: i64, day_time: i64, ticking: bool) {
+        self.world.game_time = game_time;
+        self.world.day_time = day_time;
+        if let Some(remote) = self.remote.as_mut() {
+            remote.clock_game_time = game_time;
+            remote.clock_partial = 0.0;
+            remote.clock_rate = if ticking { 1.0 } else { 0.0 };
+        }
+    }
+
     /// `ClientClockManager.tick`: the clock moves on by the game time that
     /// passed since its last tick, at its rate. A game time the server sets
     /// forward (its sync every second) moves the clock with it.

@@ -362,6 +362,7 @@ pub enum Action {
     OpenUri(String),
     /// `ConfirmLinkScreen.copyToClipboard`.
     CopyText(String),
+    ClassicFlat189,
     Play {
         folder: String,
     },
@@ -1581,8 +1582,8 @@ impl Title {
                         cx - 100.0,
                         y,
                         200.0,
-                        &if self.legacy18 { "Singleplayer 1.8.9 indisponível".into() } else { lang::get_or("menu.singleplayer", "Singleplayer") },
-                        !self.legacy18,
+                        &if self.legacy18 { "Criativo plano 1.8.9 (experimental)".into() } else { lang::get_or("menu.singleplayer", "Singleplayer") },
+                        true,
                         1,
                     ),
                     b(
@@ -2334,7 +2335,7 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
                 #[cfg(target_os = "android")]
                 let version = format!(
                     "Pojav Rust · {}",
-                    if self.legacy18 { "1.8.9 multiplayer (protocolo 47)" } else { horizon_core::VANILLA_VERSION }
+                    if self.legacy18 { "1.8.9 experimental" } else { horizon_core::VANILLA_VERSION }
                 );
                 #[cfg(not(target_os = "android"))]
                 let version = format!("Horizon {} (Rust)", horizon_core::VANILLA_VERSION);
@@ -3183,6 +3184,7 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
     }
     fn click_action(&mut self, x: f32, y: f32, (w, h): (f32, f32), hit: Option<u8>) -> Action {
         match (&mut self.mode, hit) {
+            (Mode::Main, Some(1)) if self.legacy18 => Action::ClassicFlat189,
             (Mode::Main, Some(1)) => {
                 // The title button is no longer part of the world-select screen.
                 // Clear it so Enter can activate the selected world after a

@@ -89,9 +89,16 @@ jobs:
       - name: Test protocol and packaging boundaries
         run: |
           python3 tools/check_public_tree.py
+          python3 -m unittest discover -s tests -p 'test_android_prepare_pins.py'
           python3 -m unittest discover -s tests -p 'test_android_release_audit.py'
           cargo test -p horizon-protocol --lib --test legacy18 --locked
           python3 tools/test_android_updater.py
+          rustc --edition=2024 --test crates/horizon-client-render/src/android_runtime/memory_budget.rs -o /tmp/nivora-memory-tests
+          /tmp/nivora-memory-tests
+          cargo test -p horizon-client-input --lib window::tests --locked
+          cargo test -p horizon-client-render --no-default-features --lib graphics::tests --locked
+          cargo test -p horizon-client-render --no-default-features --lib hud::tests::mobile_ --locked
+          cargo test -p horizon-client-render --no-default-features --lib sprites::tests::the_texture_budget_picks_the_largest_side_that_fits --locked
           rustc --edition=2024 --test crates/horizon-client/src/android/local_profiles.rs -o /tmp/pojav-local-profile-tests
           /tmp/pojav-local-profile-tests
           rustc --edition=2024 --test crates/horizon-client/src/android/fps_hud.rs -o /tmp/pojav-fps-hud-tests

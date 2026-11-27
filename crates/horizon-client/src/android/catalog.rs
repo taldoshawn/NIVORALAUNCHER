@@ -79,6 +79,11 @@ pub struct Config {
     pub record_performance: bool,
     pub worker_limit: u32,
     pub cache_budget_mib: u32,
+    #[serde(default)]
+    pub memory_target_mib: u32,
+    pub compact_atlas: bool,
+    pub memory_profile_initialized: bool,
+    pub uncapped_profile_ids_v1: Vec<u32>,
     #[serde(flatten)]
     pub device: crate::device_preferences::Settings,
     pub shader_source: crate::shader_catalog::Origin,
@@ -139,6 +144,10 @@ impl Default for Config {
             record_performance: false,
             worker_limit: 0,
             cache_budget_mib: 0,
+            memory_target_mib: 0,
+            compact_atlas: false,
+            memory_profile_initialized: false,
+            uncapped_profile_ids_v1: Vec::new(),
             device: crate::device_preferences::Settings::default(),
             shader_source: crate::shader_catalog::Origin::default(),
             mod_source: crate::shader_catalog::Origin::Horizon,
@@ -222,17 +231,14 @@ impl Config {
             .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
             .unwrap_or_default();
         config.device.migrate_missing(&value, &legacy);
-        if !config.max_fps_unlocked_v3 {
-            config.max_fps_unlocked_v2 = true;
-            config.max_fps_unlocked_v3 = true;
-            config.max_fps_mode = true;
-            config.battery_perf_mode = false;
-            if config.device.display_hz < 120 {
-                config.device.display_hz = 120;
+        if !config.memory_profile_initialized {
+            config.memory_profile_initialized = true;
+            if horizon_client::android_runtime::memory_budget::low_memory_device() {
+                config.apply_low_memory_profile(home);
             }
-            config.apply_experimental_to_game(home);
             let _ = config.save(home);
         }
+        config.ensure_uncapped_profile(home);
         let accounts = crate::account::Accounts::load_from(&home.join("accounts.json"));
         if accounts.selected().is_none()
             && let Some(name) = accounts.offline_selected
@@ -242,7 +248,6 @@ impl Config {
             config.name = name;
         }
         config.name = truncate_player_name(&config.name);
-        config.mod_source = crate::shader_catalog::Origin::Horizon;
         if !config.reference_ui_v1 {
             if config.theme.preset == horizon_client::ui_theme::ThemePreset::EmeraldForest {
                 config.theme.apply_preset(horizon_client::ui_theme::ThemePreset::ObsidianViolet);
@@ -321,6 +326,43 @@ impl Config {
             _ => "Auto (Phone DPI)",
         }
     }
+    /// Migrate each profile once; later manual FPS/VSync edits stay in effect.
+    pub fn ensure_uncapped_profile(&mut self, home: &Path) {
+        if self.uncapped_profile_ids_v1.contains(&self.profile) {
+            return;
+        }
+        let game = self.game_home(home);
+        let _ = std::fs::create_dir_all(&game);
+        let path = game.join("options.txt");
+        let mut settings = horizon_client::settings::Settings::load(&path);
+        horizon_client::graphics::apply_uncapped_profile(&mut settings);
+        settings.save(&path);
+        self.max_fps_mode = true;
+        self.battery_perf_mode = false;
+        self.uncapped_profile_ids_v1.push(self.profile);
+        let _ = self.save(home);
+    }
+    /// One-shot, editable starting point for phones with 2 GiB of physical RAM.
+    pub fn apply_low_memory_profile(&mut self, home: &Path) {
+        self.worker_limit = 1;
+        self.cache_budget_mib = 16;
+        self.memory_target_mib = 768;
+        self.compact_atlas = true;
+        self.memory_profile_initialized = true;
+        self.render_scale = crate::display::RenderScale::new(50);
+        self.max_fps_mode = true;
+        self.super_perf_mode = false;
+        self.battery_perf_mode = false;
+        self.fast_chunk_upload = false;
+        self.device.display_hz = 0;
+        let game = self.game_home(home);
+        let _ = std::fs::create_dir_all(&game);
+        let path = game.join("options.txt");
+        let mut settings = horizon_client::settings::Settings::load(&path);
+        horizon_client::graphics::apply_low_memory_profile(&mut settings);
+        settings.save(&path);
+        self.apply_experimental_to_game(home);
+    }
     pub fn apply_experimental_to_game(&self, home: &Path) {
         let game = self.game_home(home);
         let _ = std::fs::create_dir_all(&game);
@@ -334,44 +376,12 @@ impl Config {
             settings.chunk_fade = 0.0;
             settings.view_bobbing = false;
             settings.menu_blur = 0;
-        } else if !self.super_perf_mode {
-            settings.horizon.animated_textures = true;
-            settings.chunk_fade = 1.0;
-            settings.view_bobbing = true;
         }
-        if self.super_perf_mode {
-            settings.render_distance = settings.render_distance.min(8);
-            settings.simulation_distance = settings.simulation_distance.min(6);
-            settings.menu_blur = 0;
-            settings.clouds = "false".into();
-            settings.particles = 2;
-            settings.entity_shadows = false;
-            settings.cutout_leaves = false;
-            settings.smooth_lighting = false;
-            settings.graphics_preset = "fast".into();
-            settings.horizon.upload_budget_kib = 1536;
-        }
+        // Presets are applied when selected. Launching must preserve custom
+        // frame caps, VSync, quality and distances saved by either options UI.
         settings.horizon.battery = self.battery_perf_mode;
-        if self.battery_perf_mode {
-            settings.render_distance = settings.render_distance.min(8);
-            settings.simulation_distance = settings.simulation_distance.min(5);
-            settings.max_fps = 60;
-            settings.vsync = true;
-            settings.menu_blur = 0;
-            settings.horizon.present_mode = horizon_client::graphics::PresentMode::Fifo;
-        } else if self.max_fps_mode || self.super_perf_mode {
-            settings.max_fps = 260;
-            settings.vsync = false;
-            settings.horizon.present_mode = horizon_client::graphics::PresentMode::Immediate;
-            settings.inactivity_fps_limit = "minimized".into();
-        } else if !settings.vsync || settings.max_fps >= 260 {
-            settings.horizon.present_mode = horizon_client::graphics::PresentMode::Immediate;
-            settings.inactivity_fps_limit = "minimized".into();
-        }
         if self.fast_chunk_upload {
             settings.horizon.upload_budget_kib = settings.horizon.upload_budget_kib.max(4096);
-        } else if !self.super_perf_mode {
-            settings.horizon.upload_budget_kib = 2048;
         }
         settings.horizon.cave_culling = true;
         settings.horizon.entity_culling = true;
@@ -1986,7 +1996,7 @@ impl Catalog {
         let source = match self.page {
             Page::Packs => browser::SourceId::Modrinth,
             Page::Shaders => self.config.shader_source.source(),
-            Page::Mods => browser::SourceId::Horizon,
+            Page::Mods => self.config.mod_source.source(),
             _ => browser::SourceId::Horizon,
         };
         let query_offset = if source == browser::SourceId::Horizon {
@@ -2018,7 +2028,9 @@ impl Catalog {
                 "{} Horizon Native Shaders (.hshader) — tap Install to activate",
                 items.len()
             )
-        } else if self.page == Page::Mods {
+        } else if self.page == Page::Mods
+            && self.config.mod_source == crate::shader_catalog::Origin::Horizon
+        {
             let bundled_matches = horizon_client::mod_list::ANDROID_BUNDLED
                 .iter()
                 .filter(|(id, title, _)| {
@@ -3114,13 +3126,20 @@ pub fn install_modrinth_jar_with_port_pack(
     let mut skipped_vec = Vec::new();
     let mut namespaces_vec = vec![final_id.clone()];
 
-    if let Ok(transpiled) =
-        horizon_client::jar_transpiler::transpile_jar_to_horizon_mods_with_progress(
-            &target,
-            home,
-            progress,
-        )
     {
+        let transpiled =
+            horizon_client::jar_transpiler::transpile_jar_to_horizon_mods_with_progress(
+                &target,
+                home,
+                progress,
+            )
+            .map_err(|error| {
+                let _ = std::fs::remove_file(&target);
+                format!("Não foi possível adaptar {} para o motor nativo: {error}", project.title)
+            })?;
+        if !transpiled.hnmod_path.is_file() {
+            return Err(format!("{} não gerou um mod nativo instalável.", project.title));
+        }
         final_id = transpiled.id.clone();
         relative_final = format!("horizon-native-mods/{final_id}.hnmod");
         if let Some(pp) = transpiled.port_pack {
@@ -3149,8 +3168,6 @@ pub fn install_modrinth_jar_with_port_pack(
         on.disabled.remove(&slug);
         on.enabled.insert(final_id.clone());
         on.save(home);
-    } else {
-        browser::java::set_enabled(home, &slug, true)?;
     }
 
     let (algo, hash) = file.checksum().unwrap_or(("SHA-1", ""));
