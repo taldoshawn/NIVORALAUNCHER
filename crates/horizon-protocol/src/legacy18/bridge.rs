@@ -16,10 +16,31 @@ pub struct Outbound {
     sneaking: bool,
     selected: u8,
     slots: std::collections::HashMap<(i32, i16), Option<super::slot::Slot>>,
+    // In an open menu the final 36 slots alias player inventory slots 9..45.
+    menu_inventory: Option<(i32, i16)>,
     transaction: i16,
     speeds: Option<(f32, f32)>,
 }
 impl Outbound {
+    fn slot_key(&self, window: i32, slot: i16) -> (i32, i16) {
+        if let Some((open, start)) = self.menu_inventory
+            && window == open
+            && (start..start + 36).contains(&slot)
+        {
+            return (0, 9 + slot - start);
+        }
+        (window, slot)
+    }
+
+    fn close_window(&mut self, window: i32) {
+        if window != 0 {
+            self.slots.retain(|(w, _), _| *w != window);
+            if self.menu_inventory.is_some_and(|(w, _)| w == window) {
+                self.menu_inventory = None;
+            }
+        }
+    }
+
     /// Observe server inventory before exposing it to the game thread.
     pub fn observe(&mut self, id: i32, bytes: &[u8]) -> Result<Option<Vec<u8>>> {
         let mut r = Reader::new(bytes);
@@ -40,7 +61,7 @@ impl Outbound {
                     let mapped = if slot < 9 { slot + 36 } else { slot };
                     self.slots.insert((0, mapped), item);
                 } else {
-                    self.slots.insert((window, slot), item);
+                    self.slots.insert(self.slot_key(window, slot), item);
                 }
             }
             0x30 => {
@@ -55,9 +76,17 @@ impl Outbound {
                 }
                 super::finish(&r)?;
                 self.slots.retain(|(w, _), _| *w != window);
-                for (slot, item) in incoming {
-                    self.slots.insert((window, slot), item);
+                if window != 0 {
+                    self.menu_inventory = (count >= 36).then_some((window, count - 36));
                 }
+                for (slot, item) in incoming {
+                    self.slots.insert(self.slot_key(window, slot), item);
+                }
+            }
+            0x2e => {
+                let window = i32::from(r.u8()?);
+                super::finish(&r)?;
+                self.close_window(window);
             }
             0x32 => {
                 let window = r.u8()?;
@@ -186,6 +215,7 @@ impl Outbound {
                 let window =
                     u8::try_from(p.container).map_err(|_| Error::new("invalid legacy window"))?;
                 let mut w = Writer::new();
+                self.close_window(p.container);
                 w.varint(0x0d);
                 w.u8(window);
                 w.data
@@ -201,10 +231,15 @@ impl Outbound {
                 w.i8(p.button);
                 w.i16(action);
                 w.u8(p.input as u8);
-                let clicked = self
-                    .slots
-                    .get(&(p.container, p.slot))
-                    .and_then(Option::as_ref);
+                // Container.slotClick returns a stack for pickup/quick-move.
+                // Swap, clone, throw, drag and double-click return null.
+                let clicked = if matches!(p.input, 0 | 1) && p.slot >= 0 {
+                    self.slots
+                        .get(&self.slot_key(p.container, p.slot))
+                        .and_then(Option::as_ref)
+                } else {
+                    None
+                };
                 super::slot::Slot::write(clicked, &mut w)?;
                 self.transaction = action;
                 w.data
@@ -348,6 +383,55 @@ mod tests {
         assert_eq!(
             b.encode(&packet).unwrap().unwrap(),
             [8, 0, 0, 0, 65, 0, 0, 0, 2, 1, 0, 1, 64, 0, 0, 0, 8, 16, 0]
+        );
+    }
+    #[test]
+    fn chest_hotbar_updates_follow_the_player_after_closing() {
+        let mut bridge = Outbound::default();
+        let mut contents = Writer::new();
+        contents.u8(1);
+        contents.i16(63);
+        for slot in 0..63 {
+            if slot == 54 {
+                contents.bytes(&[0, 3, 12, 0, 0, 0]);
+            } else {
+                contents.i16(-1);
+            }
+        }
+        bridge.observe(0x30, &contents.data).unwrap();
+        let click = |input| {
+            S::ContainerClick(modern::ContainerClick {
+                container: 1,
+                state: 0,
+                slot: 54,
+                button: 0,
+                input,
+                changed: Vec::new(),
+                carried: None,
+            })
+        };
+        assert_eq!(
+            bridge.encode(&click(0)).unwrap().unwrap(),
+            [14, 1, 0, 54, 0, 0, 1, 0, 0, 3, 12, 0, 0, 0]
+        );
+        assert_eq!(
+            bridge.encode(&click(2)).unwrap().unwrap(),
+            [14, 1, 0, 54, 0, 0, 2, 2, 255, 255]
+        );
+        bridge.observe(0x2f, &[1, 0, 54, 0, 4, 5, 0, 0, 0]).unwrap();
+        bridge.observe(0x2e, &[1]).unwrap();
+        let place = S::UseItemOn(modern::UseItemOn {
+            hand: 0,
+            pos: [0, 0, 0],
+            face: 1,
+            cursor: [0.; 3],
+            inside: false,
+            world_border: false,
+            sequence: 0,
+        });
+        assert_eq!(
+            &bridge.encode(&place).unwrap().unwrap()[10..16],
+            &[0, 4, 5, 0, 0, 0]
         );
     }
     #[test]
