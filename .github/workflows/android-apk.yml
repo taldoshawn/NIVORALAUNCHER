@@ -337,9 +337,9 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  # Intentionally no publish job. APKs from this workflow are private GitHub
-  # Actions artifacts for review, even though they use the official package ID
-  # and release signing certificate. After explicit owner approval, run the
+  # Intentionally no publish job. Actions artifacts in this public repository
+  # are not owner-only downloads. Do not use this workflow to deliver private
+  # test APKs. After explicit owner approval, run the
   # separate "Publish verified owner-signed APKs" workflow manually with the
   # exact successful run number, run ID and source SHA. Only that workflow
   # may create the public GitHub Release consumed by the NIVORA website.

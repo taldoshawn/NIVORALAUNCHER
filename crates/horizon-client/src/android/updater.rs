@@ -13,6 +13,10 @@ use std::{
 pub const CURRENT_VERSION: &str = "0.1.0";
 pub const REPO: &str = "taldoshawn/NIVORALAUNCHER";
 
+fn private_build() -> bool {
+    option_env!("NIVORA_PRIVATE_TEST") == Some("1")
+}
+
 fn device_abi() -> &'static str {
     match std::env::consts::ARCH {
         "aarch64" => "arm64-v8a",
@@ -68,6 +72,9 @@ pub enum UpdateStatus {
 static PUBLIC_NOTICE: Mutex<String> = Mutex::new(String::new());
 
 pub fn public_notice() -> String {
+    if private_build() {
+        return String::new();
+    }
     PUBLIC_NOTICE
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -85,6 +92,9 @@ fn read_community_notice(value: &Value) -> String {
 }
 
 fn check_community_notice() {
+    if private_build() {
+        return;
+    }
     let result = (|| -> Result<Value, String> {
         let response = ureq::get("https://nivora-launcher.vercel.app/api/app-policy")
             .timeout(std::time::Duration::from_secs(5))
@@ -209,6 +219,9 @@ pub fn is_newer_version(remote: &str, current: &str) -> bool {
 
 /// Fetches the latest release from the repository and parses release metadata.
 pub fn check_for_update() -> Result<Option<ReleaseInfo>, String> {
+    if private_build() {
+        return Ok(None);
+    }
     let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
     let response = ureq::get(&url)
         .set("User-Agent", &format!("Horizon-Android/{CURRENT_VERSION}"))
@@ -274,7 +287,9 @@ pub fn check_for_update() -> Result<Option<ReleaseInfo>, String> {
 
 /// Initiates an update check on a background worker thread.
 pub fn check_in_background() {
-    if option_env!("NIVORA_PRIVATE_TEST") == Some("1") { return; }
+    if private_build() {
+        return;
+    }
     if CHECKING.swap(true, Ordering::SeqCst) {
         return;
     }
@@ -309,6 +324,12 @@ pub fn check_in_background() {
 
 /// Downloads the APK and triggers automatic install.
 pub fn download_and_install_in_background(info: ReleaseInfo, home: PathBuf) {
+    if private_build() {
+        set_status(UpdateStatus::Error(
+            "Esta compilação privada não recebe atualizações do canal público.".into(),
+        ));
+        return;
+    }
     if DOWNLOADING.swap(true, Ordering::SeqCst) {
         return;
     }
@@ -397,6 +418,9 @@ pub fn download_and_install_in_background(info: ReleaseInfo, home: PathBuf) {
 
 /// Invokes Android package installer through JNI.
 pub fn trigger_install(apk_path: &Path) {
+    if private_build() {
+        return;
+    }
     #[cfg(target_os = "android")]
     {
         crate::platform::with_context(|env, activity| {
@@ -424,6 +448,51 @@ pub fn trigger_install(apk_path: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn private_channel_does_not_check_download_or_install_public_updates() {
+        if option_env!("NIVORA_PRIVATE_TEST") != Some("1") {
+            return;
+        }
+        set_status(UpdateStatus::Idle);
+        assert!(check_for_update().unwrap().is_none());
+        check_community_notice();
+        assert!(public_notice().is_empty());
+        check_in_background();
+        assert!(!CHECKING.load(Ordering::SeqCst));
+        assert_eq!(get_status(), UpdateStatus::Idle);
+        let home = std::env::temp_dir().join(format!(
+            "nivora-private-update-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos(),
+        ));
+        let asset_name = "nivora-test-arm64-v8a.apk".to_owned();
+        download_and_install_in_background(
+            ReleaseInfo {
+                version: "999.0.0".into(),
+                tag_name: "v999.0.0".into(),
+                title: "Update test".into(),
+                changelog: String::new(),
+                download_url: Some(format!(
+                    "https://github.com/{REPO}/releases/download/v999.0.0/{asset_name}"
+                )),
+                asset_name,
+                size_bytes: 1,
+                sha256: Some("a".repeat(64)),
+            },
+            home.clone(),
+        );
+        assert!(!home.exists());
+        assert!(!DOWNLOADING.load(Ordering::SeqCst));
+        assert!(
+            matches!(get_status(), UpdateStatus::Error(message) if message.contains("compilação privada"))
+        );
+        trigger_install(&home.join("never-downloaded.apk"));
+        assert!(!home.exists());
+    }
 
     #[test]
     fn update_selects_the_devices_architecture_not_the_first_apk() {
