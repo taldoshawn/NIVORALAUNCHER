@@ -147,6 +147,9 @@ impl Game<'_> {
     pub(super) fn handle_legacy_packet(&mut self, id: i32, bytes: &[u8]) -> Result<()> {
         let packet = Packet::decode(id, bytes)?;
         match packet {
+            Packet::Time { game_time, day_time, ticking } => {
+                self.sync_legacy_clock(game_time, day_time, ticking);
+            }
             Packet::Join {
                 entity,
                 gamemode,

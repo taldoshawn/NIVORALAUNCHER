@@ -9167,6 +9167,17 @@ impl Game<'_> {
             .filter_map(|(id, uuid)| Some((*id as u32, r.level_player_name(*id, uuid)?.to_owned())))
             .collect()
     }
+    /// Protocol 47 sends one clock and encodes a frozen sun with negative day time.
+    pub(super) fn sync_legacy_clock(&mut self, game_time: i64, day_time: i64, ticking: bool) {
+        self.world.game_time = game_time;
+        self.world.day_time = day_time;
+        if let Some(remote) = self.remote.as_mut() {
+            remote.clock_game_time = game_time;
+            remote.clock_partial = 0.0;
+            remote.clock_rate = if ticking { 1.0 } else { 0.0 };
+        }
+    }
+
     /// `ClientClockManager.tick`: the clock moves on by the game time that
     /// passed since its last tick, at its rate. A game time the server sets
     /// forward (its sync every second) moves the clock with it.
