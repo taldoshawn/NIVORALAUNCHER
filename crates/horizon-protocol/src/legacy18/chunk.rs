@@ -131,6 +131,34 @@ fn expected_len(mask: u16, ground_up: bool, skylight: bool) -> usize {
 }
 
 impl Section<'_> {
+    /// States in Anvil section order (X fastest). Each payload was length-checked
+    /// when the column was decoded.
+    pub fn states(&self) -> impl Iterator<Item = u16> + '_ {
+        self.states
+            .chunks_exact(2)
+            .map(|b| u16::from_le_bytes([b[0], b[1]]))
+    }
+
+    /// Return a single packed light value if every voxel has identical light.
+    pub fn uniform_light(&self) -> Option<u8> {
+        fn uniform(bytes: &[u8]) -> Option<u8> {
+            let first = bytes[0];
+            (first >> 4 == first & 15 && bytes.iter().all(|&b| b == first)).then_some(first & 15)
+        }
+        let block = uniform(self.block_light)?;
+        let sky = match self.sky_light {
+            Some(bytes) => uniform(bytes)?,
+            None => 0,
+        };
+        Some(block | (sky << 4))
+    }
+
+    pub fn packed_light(&self) -> impl Iterator<Item = u8> + '_ {
+        (0..4096).map(|i| {
+            nibble(self.block_light, i) | (self.sky_light.map_or(0, |bytes| nibble(bytes, i)) << 4)
+        })
+    }
+
     fn index(x: u8, y: u8, z: u8) -> Option<usize> {
         (x < 16 && y < 16 && z < 16)
             .then_some((usize::from(y) * 16 + usize::from(z)) * 16 + usize::from(x))
@@ -153,4 +181,43 @@ impl Section<'_> {
 
 fn nibble(bytes: &[u8], i: usize) -> u8 {
     (bytes[i / 2] >> ((i & 1) * 4)) & 15
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn linear_decode_matches_voxel_access_with_and_without_skylight() {
+        let mut states = [0; STATES];
+        states[2..4].copy_from_slice(&0x123u16.to_le_bytes());
+        let mut block = [0x33; LIGHT];
+        block[0] = 0x21;
+        let sky = [0xaa; LIGHT];
+        for skylight in [Some(sky.as_slice()), None] {
+            let section = Section {
+                y: 0,
+                states: &states,
+                block_light: &block,
+                sky_light: skylight,
+            };
+            assert_eq!(section.uniform_light(), None);
+            for (i, (state, light)) in section.states().zip(section.packed_light()).enumerate() {
+                let (x, y, z) = ((i & 15) as u8, (i >> 8) as u8, ((i >> 4) & 15) as u8);
+                assert_eq!(Some(state), section.state(x, y, z));
+                assert_eq!(
+                    light,
+                    section.block_light(x, y, z).unwrap()
+                        | (section.sky_light(x, y, z).unwrap_or(0) << 4)
+                );
+            }
+        }
+        block.fill(0x33);
+        let section = Section {
+            y: 0,
+            states: &states,
+            block_light: &block,
+            sky_light: Some(&sky),
+        };
+        assert_eq!(section.uniform_light(), Some(0xa3));
+    }
 }

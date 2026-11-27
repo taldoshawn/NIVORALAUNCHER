@@ -94,20 +94,25 @@ impl Game<'_> {
                 continue;
             }
             let mut states = [0u32; 4096];
-            let mut light = Box::new([0u8; 4096]);
-            for i in 0..4096 {
-                let (x, y, z) = ((i & 15) as u8, (i >> 8) as u8, ((i >> 4) & 15) as u8);
-                states[i] = self.legacy_state(source.state(x, y, z).expect("in-range block"))?;
-                light[i] = source.block_light(x, y, z).unwrap_or(0)
-                    | (source.sky_light(x, y, z).unwrap_or(0) << 4);
+            for (target_state, state) in states.iter_mut().zip(source.states()) {
+                *target_state = self.legacy_state(state)?;
             }
-            let mut section = Section {
-                blocks: Section::from_blocks(&states),
-                light: Light::Full(light),
-                ..(*chunk.sections[target as usize]).clone()
+            let light = match source.uniform_light() {
+                Some(value) => Light::Uniform(value),
+                None => {
+                    let mut values = Box::new([0; 4096]);
+                    for (value, packed) in values.iter_mut().zip(source.packed_light()) {
+                        *value = packed;
+                    }
+                    Light::Full(values)
+                }
             };
-            section.compact();
-            chunk.sections[target as usize] = Arc::new(section);
+            let target = &mut chunk.sections[target as usize];
+            *target = Arc::new(Section {
+                blocks: Section::from_blocks(&states),
+                biomes: target.biomes.clone(),
+                light,
+            });
         }
         if let Some(biomes) = column.biomes() {
             let mut cells = [0u32; 64];

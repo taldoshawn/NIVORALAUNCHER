@@ -3,6 +3,7 @@ use horizon_world::{
     chunk::{BlockState, ChunkData},
     compression::Compression,
     nbt::{self, Limits},
+    numeric_chunk::NumericChunk,
     region::{ChunkRecord, RegionFile, RegionWriter},
 };
 use std::{
@@ -54,6 +55,9 @@ fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
             "Horizon world data tools — Java Edition {}\n\
              inspect <region.mca>\n\
              copy-region <source.mca> <new-directory/r.x.z.mca> [gzip|zlib|none|lz4]\n\
+             generate-flat-chunk-189 <new-region/r.x.z.mca> <chunk-x> <chunk-z>\n\
+             get-numeric-block <region.mca> <x> <y> <z>\n\
+             edit-numeric-block <source.mca> <new-directory/r.x.z.mca> <x> <y> <z> <id> <metadata>\n\
              get-block <region.mca> <x> <y> <z>\n\
              edit-block-data <source.mca> <new-directory/r.x.z.mca> <x> <y> <z> <name> [property=value ...]\n\
              nbt-copy <input> <new-output> <input-codec> <output-codec>\n\
@@ -130,6 +134,39 @@ fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
                 writer.finish()?;
             }
             println!("Wrote {}", args[2]);
+        }
+        "generate-flat-chunk-189" if args.len() == 4 => {
+            let pos = horizon_core::position::ChunkPos::new(args[2].parse()?, args[3].parse()?);
+            if horizon_world::region::position_from_path(Path::new(&args[1]))? != pos.region() {
+                return Err("chunk does not belong to this region".into());
+            }
+            let root = NumericChunk::classic_flat_189(pos).into_nbt();
+            let record = ChunkRecord::from_nbt(&root, Compression::Zlib, 0, Limits::default())?;
+            let mut writer = RegionWriter::create(&args[1])?;
+            writer.write(pos, &record)?;
+            writer.finish()?;
+        }
+        "get-numeric-block" if args.len() == 5 => {
+            let pos = BlockPos::new(args[2].parse()?, args[3].parse()?, args[4].parse()?);
+            let record = RegionFile::open(&args[1])?
+                .read(pos.chunk())?
+                .ok_or("chunk is absent")?;
+            let (id, metadata) = NumericChunk::new(record.nbt(Limits::default())?)?.block(pos)?;
+            println!("{id}:{metadata}");
+        }
+        "edit-numeric-block" if args.len() == 8 => {
+            let pos = BlockPos::new(args[3].parse()?, args[4].parse()?, args[5].parse()?);
+            let mut region = RegionFile::open(&args[1])?;
+            let record = region.read(pos.chunk())?.ok_or("chunk is absent")?;
+            let mut chunk = NumericChunk::new(record.nbt(Limits::default())?)?;
+            chunk.set_block(pos, args[6].parse()?, args[7].parse()?)?;
+            let next = ChunkRecord::from_nbt(
+                &chunk.into_nbt(),
+                record.compression,
+                record.timestamp,
+                Limits::default(),
+            )?;
+            region.export(&args[2], &[(pos.chunk(), Some(next))])?;
         }
         "get-block" if args.len() == 5 => {
             let block = BlockPos::new(args[2].parse()?, args[3].parse()?, args[4].parse()?);
