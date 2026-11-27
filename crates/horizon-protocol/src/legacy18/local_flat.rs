@@ -6,6 +6,7 @@ use crate::{
     connection::{Connection, Pipe},
     crypto::{offline_uuid, uuid_string},
 };
+use horizon_core::geometry::{Aabb, Vec3};
 use horizon_core::position::{BlockPos, ChunkPos};
 use horizon_world::{
     compression::Compression,
@@ -163,13 +164,35 @@ fn stream(
     *loaded = next;
     Ok(())
 }
-fn update(conn: &mut Connection, dir: &Path, pos: BlockPos, id: u8) -> Result<()> {
+fn send_block(conn: &mut Connection, pos: BlockPos, id: u16, metadata: u8) -> Result<()> {
+    let mut w = packet(0x23);
+    w.i64(super::actions::block_position(pos.x, pos.y, pos.z)? as i64);
+    w.varint((i32::from(id) << 4) | i32::from(metadata));
+    conn.send(&w.data)
+}
+
+fn update(conn: &mut Connection, dir: &Path, pos: BlockPos, id: u8, pose: &[f64; 5]) -> Result<()> {
     let p = pos.chunk();
     let path = region(dir, p);
     let mut file = open_region(&path, true)?;
     let mut chunk = load(file.as_mut(), p)?;
-    if chunk.block(pos)? == (u16::from(id), 0) {
-        return Ok(());
+    let (old, metadata) = chunk.block(pos)?;
+    if id != 0 {
+        // All placeable blocks in the classic-flat hotbar have full cube collision.
+        let half_width = f64::from(0.6f32) * 0.5;
+        let player = Aabb::new(
+            Vec3::new(pose[0] - half_width, pose[1], pose[2] - half_width),
+            Vec3::new(
+                pose[0] + half_width,
+                pose[1] + f64::from(1.8f32),
+                pose[2] + half_width,
+            ),
+        );
+        if old != 0 || Aabb::block(pos).intersects(player) {
+            return send_block(conn, pos, old, metadata);
+        }
+    } else if old == 0 {
+        return send_block(conn, pos, old, metadata);
     }
     chunk.set_block(pos, u16::from(id), 0)?;
     chunk.update_classic_flat_skylight()?;
@@ -182,10 +205,7 @@ fn update(conn: &mut Connection, dir: &Path, pos: BlockPos, id: u8) -> Result<()
         writer.write(p, &record)?;
         writer.finish()?;
     }
-    let mut w = packet(0x23);
-    w.i64(super::actions::block_position(pos.x, pos.y, pos.z)? as i64);
-    w.varint(i32::from(id) << 4);
-    conn.send(&w.data)?;
+    send_block(conn, pos, u16::from(id), 0)?;
     send_column(conn, dir, p)
 }
 fn unpack(r: &mut Reader<'_>) -> Result<BlockPos> {
@@ -390,7 +410,7 @@ fn play(conn: &mut Connection, dir: &Path) -> Result<()> {
                     let action = r.u8()?;
                     let p = unpack(&mut r)?;
                     if action == 0 && p.y < 256 && loaded.contains(&p.chunk()) {
-                        update(conn, dir, p, 0)?;
+                        update(conn, dir, p, 0, &pose)?;
                     }
                 }
                 8 => {
@@ -408,7 +428,7 @@ fn play(conn: &mut Connection, dir: &Path) -> Result<()> {
                     {
                         let pos = p.offset(x, y, z);
                         if (0..256).contains(&pos.y) && loaded.contains(&pos.chunk()) {
-                            update(conn, dir, pos, HOTBAR[held])?;
+                            update(conn, dir, pos, HOTBAR[held], &pose)?;
                         }
                     }
                 }
@@ -506,7 +526,7 @@ mod tests {
         fs::write(&path, &bytes).unwrap();
         let (server, _client) = Pipe::pair();
         let mut conn = Connection::local(server);
-        assert!(update(&mut conn, &dir, BlockPos::new(0, 4, 0), 1).is_err());
+        assert!(update(&mut conn, &dir, BlockPos::new(0, 4, 0), 1, &[0.; 5]).is_err());
         assert_eq!(fs::read(&path).unwrap(), bytes);
 
         // Two chunks claiming the same sector must also fail closed.
@@ -514,7 +534,7 @@ mod tests {
         bytes[..4].copy_from_slice(&0x00000201u32.to_be_bytes());
         bytes[4..8].copy_from_slice(&0x00000201u32.to_be_bytes());
         fs::write(&path, &bytes).unwrap();
-        assert!(update(&mut conn, &dir, BlockPos::new(0, 4, 0), 1).is_err());
+        assert!(update(&mut conn, &dir, BlockPos::new(0, 4, 0), 1, &[0.; 5]).is_err());
         assert_eq!(fs::read(&path).unwrap(), bytes);
         fs::remove_file(&path).unwrap();
         let wrong_chunk = NumericChunk::classic_flat_189(ChunkPos::new(1, 0));
@@ -529,7 +549,7 @@ mod tests {
         writer.write(p, &record).unwrap();
         writer.finish().unwrap();
         let before = fs::read(&path).unwrap();
-        assert!(update(&mut conn, &dir, BlockPos::new(0, 4, 0), 1).is_err());
+        assert!(update(&mut conn, &dir, BlockPos::new(0, 4, 0), 1, &[0.; 5]).is_err());
         assert_eq!(fs::read(&path).unwrap(), before);
         fs::remove_dir_all(dir).unwrap();
     }
@@ -589,25 +609,28 @@ mod tests {
         pos.f64(0.5);
         pos.bool(true);
         c.send(&pos.data).unwrap();
-        let mut w = packet(8);
-        w.i64(super::super::actions::block_position(16, 3, 0).unwrap() as i64);
-        w.u8(1);
-        w.i16(-1);
-        w.bytes(&[8, 15, 8]);
-        c.send(&w.data).unwrap();
-        loop {
-            let (id, b) = c.recv().unwrap();
-            if id == 0x23 {
-                assert_eq!(
-                    Packet::decode(id, &b).unwrap(),
-                    Packet::BlockChange {
-                        x: 16,
-                        y: 4,
-                        z: 0,
-                        state: 64
-                    }
-                );
-                break;
+        // At the player's feet, into solid dirt, and finally into free space.
+        for (x, y, expected) in [(16, 4, 0), (17, 2, 3 << 4), (17, 4, 4 << 4)] {
+            let mut w = packet(8);
+            w.i64(super::super::actions::block_position(x, y - 1, 0).unwrap() as i64);
+            w.u8(1);
+            w.i16(-1);
+            w.bytes(&[8, 15, 8]);
+            c.send(&w.data).unwrap();
+            loop {
+                let (id, b) = c.recv().unwrap();
+                if id == 0x23 {
+                    assert_eq!(
+                        Packet::decode(id, &b).unwrap(),
+                        Packet::BlockChange {
+                            x,
+                            y: y as u16,
+                            z: 0,
+                            state: expected
+                        }
+                    );
+                    break;
+                }
             }
         }
         drop(c);
@@ -650,7 +673,10 @@ mod tests {
             if id == 0x21 {
                 let col = Column::decode(&b, true).unwrap();
                 if (col.x, col.z) == (1, 0) {
-                    assert_eq!(col.section(0).unwrap().state(0, 4, 0), Some(64));
+                    let section = col.section(0).unwrap();
+                    assert_eq!(section.state(0, 4, 0), Some(0));
+                    assert_eq!(section.state(1, 2, 0), Some(3 << 4));
+                    assert_eq!(section.state(1, 4, 0), Some(4 << 4));
                     break;
                 }
             }
