@@ -207,7 +207,21 @@ impl Session {
             address, name, auth, info, lang, None, None, resources, false, true, None,
         )
     }
-    /// Join a protocol 4/5 server using native 1.7 login and packet codecs.
+    /// Join the native 1.7 preview through memory, using its selected protocol.
+    pub fn connect_local_legacy17(
+        version: horizon_protocol::legacy17::Version,
+        pipe: horizon_protocol::connection::Pipe,
+        name: &str,
+        info: cfg::ClientInformation,
+        lang: Arc<Language>,
+        resources: PathBuf,
+    ) -> Self {
+        Self::start(
+            "local", name, None, info, lang, Some(pipe), None, resources, false, true,
+            Some(version),
+        )
+    }
+    /// Join a remote protocol 4/5 server using native 1.7 codecs.
     pub fn connect_legacy17(
         version: horizon_protocol::legacy17::Version,
         address: &str,
@@ -256,6 +270,7 @@ impl Session {
                 let result = if let Some(version) = legacy17 {
                     legacy17::run(
                         version,
+                        local,
                         &address_owned,
                         &name_owned,
                         auth.as_deref(),

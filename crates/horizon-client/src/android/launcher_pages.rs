@@ -400,7 +400,7 @@ pub(super) enum Action {
     // Controls & Control Editor actions
     GameVersion,
     ChooseGameVersion(bool),
-    ChooseLegacy17,
+    ChooseLegacy17(bool),
     KeyboardControlPreset,
     PojavControlPreset,
     OpenControlEditor,
@@ -7437,8 +7437,9 @@ impl Launcher {
                 self.chooser = None;
                 self.catalog.refresh(&self.home);
             }
-            Some(Action::ChooseLegacy17) => {
+            Some(Action::ChooseLegacy17(protocol4)) => {
                 self.catalog.config.legacy17 = true;
+                self.catalog.config.legacy17_protocol4 = protocol4;
                 self.catalog.config.legacy18 = true;
                 self.catalog.config.save(&self.home)?;
                 self.chooser = None;

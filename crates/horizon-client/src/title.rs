@@ -363,6 +363,7 @@ pub enum Action {
     /// `ConfirmLinkScreen.copyToClipboard`.
     CopyText(String),
     ClassicFlat189,
+    ClassicFlat17,
     Play {
         folder: String,
     },
@@ -1584,14 +1585,17 @@ impl Title {
                         cx - 100.0,
                         y,
                         200.0,
-                        &if self.legacy17.is_some() {
-                            "Singleplayer 1.7 indisponível".into()
+                        &if let Some(version) = self.legacy17 {
+                            format!(
+                                "Criativo plano {} (experimental)",
+                                if version.protocol() == 4 { "1.7.2" } else { "1.7.10" },
+                            )
                         } else if self.legacy18 {
                             "Criativo plano 1.8.9 (experimental)".into()
                         } else {
                             lang::get_or("menu.singleplayer", "Singleplayer")
                         },
-                        self.legacy17.is_none(),
+                        true,
                         1,
                     ),
                     b(
@@ -2344,7 +2348,7 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
                 let version = format!(
                     "Pojav Rust · {}",
                     if self.legacy17.is_some() {
-                        "1.7 multiplayer experimental"
+                        "1.7 experimental"
                     } else if self.legacy18 {
                         "1.8.9 experimental"
                     } else {
@@ -2355,7 +2359,7 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
                 let version = format!(
                     "Horizon {} (Rust)",
                     if self.legacy17.is_some() {
-                        "1.7 multiplayer experimental"
+                        "1.7 experimental"
                     } else {
                         horizon_core::VANILLA_VERSION
                     }
@@ -3205,7 +3209,7 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
     }
     fn click_action(&mut self, x: f32, y: f32, (w, h): (f32, f32), hit: Option<u8>) -> Action {
         match (&mut self.mode, hit) {
-            (Mode::Main, Some(1)) if self.legacy17.is_some() => Action::None,
+            (Mode::Main, Some(1)) if self.legacy17.is_some() => Action::ClassicFlat17,
             (Mode::Main, Some(1)) if self.legacy18 => Action::ClassicFlat189,
             (Mode::Main, Some(1)) => {
                 // The title button is no longer part of the world-select screen.

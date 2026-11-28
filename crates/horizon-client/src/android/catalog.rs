@@ -68,6 +68,8 @@ pub struct Config {
     pub server: String,
     pub legacy18: bool,
     pub legacy17: bool,
+    /// Existing 1.7 profiles retain protocol 5; only an explicit 1.7.2 choice enables 4.
+    pub legacy17_protocol4: bool,
     #[serde(skip)]
     pub microsoft_client_id: String,
     pub renderer: RendererMode,
@@ -136,6 +138,7 @@ impl Default for Config {
             server: String::new(),
             legacy18: false,
             legacy17: false,
+            legacy17_protocol4: false,
             microsoft_client_id: String::new(),
             renderer: RendererMode::default(),
             render_scale: crate::display::RenderScale::default(),
@@ -215,7 +218,11 @@ impl Orientation {
 impl Config {
     pub fn game_version_label(&self) -> &'static str {
         if self.legacy17 {
-            "1.7.10"
+            if self.legacy17_protocol4 {
+                "1.7.2"
+            } else {
+                "1.7.10"
+            }
         } else if self.legacy18 {
             "1.8.9"
         } else {

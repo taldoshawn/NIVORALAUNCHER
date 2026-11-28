@@ -13,6 +13,7 @@ import shutil
 import socket
 import struct
 import subprocess
+import sys
 import tempfile
 import time
 import zlib
@@ -104,6 +105,7 @@ def column(directory, cx, cz):
 
 
 def compare(native, reference, stage):
+    differences = []
     for cz in range(-1, 2):
         for cx in range(-1, 2):
             actual, expected = column(native, cx, cz), column(reference, cx, cz)
@@ -112,9 +114,12 @@ def compare(native, reference, stage):
                     i = next(i for i, pair in enumerate(zip(actual[field], expected[field])) if pair[0] != pair[1])
                     where = ((cx * 16 + (i & 15), i >> 8, cz * 16 + ((i >> 4) & 15))
                              if len(actual[field]) == 65536 else (cx, cz, i))
-                    raise AssertionError(f"{stage}: {field} at {where}: Rust={actual[field][i]} vanilla={expected[field][i]}")
+                    differences.append({"field": field, "position": where,
+                                        "rust": actual[field][i], "vanilla": expected[field][i],
+                                        "count": sum(a != b for a, b in zip(actual[field], expected[field]))})
     result = {"stage": stage, "columns": 9, "block_positions": 589824,
-              "light_nibbles": 1179648, "matched": True}
+              "light_nibbles": 1179648, "matched": not differences,
+              "differences": differences}
     print(json.dumps(result), flush=True)
     return result
 
@@ -160,7 +165,9 @@ def run_version(args, version, probe):
         time.sleep(1.1)
         if player.failure:
             raise AssertionError(player.failure)
-        command(server, "save-all")
+        # 1.7 writes regions asynchronously; the command's normal completion
+        # only queues IO. Flush before independently reading the region files.
+        command(server, "save-all flush")
 
     def native(stage):
         subprocess.run([str(probe), version, stage, str(work / "native")], cwd=ROOT, env=env, check=True)
@@ -209,6 +216,9 @@ def run_version(args, version, probe):
                   "stages": stages, "source_sha256": {p: hashlib.sha256((ROOT / p).read_bytes()).hexdigest() for p in SOURCES},
                   "scope": "Native restricted creative-flat terrain/save core only; no gameplay loop, mobs, random ticks, inventories, player movement or Android rendering parity."}
         (evidence / "result.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+        failed = [s["stage"] for s in stages if not s["matched"]]
+        if failed:
+            raise AssertionError(f"{version}: native flat parity failed: {', '.join(failed)}")
         print(f"{version}: all native flat terrain/save stages matched", flush=True)
     finally:
         if bot is not None:
@@ -237,8 +247,15 @@ def main():
     probe = (args.probe or lab.cargo_target() / "debug" / "examples" / "legacy17_flat_fixture").resolve()
     if not probe.is_file():
         raise RuntimeError(f"missing native fixture: {probe}")
+    failures = []
     for version in args.version or VERSIONS:
-        run_version(args, version, probe)
+        try:
+            run_version(args, version, probe)
+        except AssertionError as error:
+            failures.append(str(error))
+            print(str(error), file=sys.stderr, flush=True)
+    if failures:
+        raise SystemExit("\n".join(failures))
 
 
 if __name__ == "__main__":

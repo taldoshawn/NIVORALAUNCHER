@@ -1,15 +1,15 @@
 # Minecraft 1.7: transporte nativo em Rust
 
 O cliente tem um caminho próprio para os protocolos 4 e 5 da família 1.7.
-O estado atual é **multiplayer experimental**. Login, chunks, inventário,
+O estado atual é **multiplayer e criativo plano restrito experimentais**. Login, chunks, inventário,
 movimento e interações básicas foram exercitados contra servidores vanilla
-1.7.2 e 1.7.10. Isso não completa o motor histórico nem o singleplayer.
+1.7.2 e 1.7.10. Isso não completa o motor histórico nem o singleplayer geral.
 
 ## Selecionar
 
-No launcher Android, selecione **Versão → 1.7.10** e entre em **Multiplayer**.
+No launcher Android, selecione **Versão → 1.7.2** ou **1.7.10** e entre em **Multiplayer**.
 A escolha é preservada no perfil do launcher. Ela inicia o transporte de
-protocolo 5 e identifica a sessão como experimental. A consulta e a indicação
+protocolo 4 ou 5 e identifica a sessão como experimental. A consulta e a indicação
 de compatibilidade na lista de servidores acompanham o protocolo selecionado.
 
 No cliente de desktop, depois da preparação normal dos recursos do projeto:
@@ -25,8 +25,22 @@ horizon-client --protocol-4 --server 127.0.0.1:25565 --name Jogador
 | `--protocol-5` | 1.7.6–1.7.10 | 1.7.10 |
 
 As versões intermediárias compartilham esses números de protocolo, mas não
-receberam testes individuais nesta alteração. O seletor Android oferece a
-referência 1.7.10; o protocolo 4 está acessível pela CLI.
+receberam testes individuais nesta alteração. O seletor Android oferece as
+referências 1.7.2 e 1.7.10; perfis anteriores da 1.7 continuam na 1.7.10.
+
+O botão **Criativo plano** do menu principal abre o servidor nativo em memória
+da versão selecionada. Cada perfil guarda mundos distintos em
+`legacy-worlds/1.7.2/classic-flat` e `legacy-worlds/1.7.10/classic-flat`, relativos
+à pasta de jogo. O motor usa arrays, altura, luz e NBT históricos próprios.
+Não inicia o mundo 1.8.9 ou a simulação moderna sob o nome da 1.7.
+
+Esse experimento oferece terreno plano e nove blocos fixos na barra, colocação,
+quebra, colisão de cubos e persistência de posição, rotação e slot. O inventário
+geral fica fechado nesse modo; os nove slots selecionam a paleta suportada.
+O servidor continua responsável por validar alcance, colisão e alterações.
+Mundos sem a marca do experimento, de outra versão ou com dados inválidos são
+recusados antes de substituir seu conteúdo. Não há sobrevivência, criaturas,
+receitas, redstone, geração normal ou paridade completa de movimento/iluminação.
 
 O nome local funciona em servidores que aceitam perfis offline. Quando um
 servidor exige autenticação, o transporte utiliza a conta já autenticada no
@@ -72,17 +86,16 @@ expansão descomprimida, para a expansão agregada de inventários/chunks
 normalizados e para nomes de jogadores armazenados. Pacotes sem conversão
 implementada não são encaminhados como se fossem de outra versão.
 
-O botão de singleplayer fica desabilitado na seleção 1.7. Os caminhos de
-abertura local também recusam essa seleção, incluindo `--world`,
+O menu oferece apenas a entrada explícita do criativo plano restrito. Os caminhos de
+abertura de mundos gerais continuam recusando essa seleção, incluindo `--world`,
 `--quickPlaySingleplayer`, benchmark e servidor dedicado. Assim, selecionar
 1.7 não abre o mundo plano 1.8.9 nem o motor de mundos moderno sob outro rótulo.
 
 ## O que ainda falta
 
-- Motor local da 1.7: registros próprios, regras de blocos e itens, receitas,
+- Motor local completo da 1.7: registros próprios, regras de blocos e itens, receitas,
   criaturas, combate, redstone, geração de terreno, estruturas e persistência
-  com validação histórica. O leitor de regiões existente não implementa essas
-  regras por si só.
+  com validação histórica além do núcleo plano restrito.
 - Cobertura completa de pacotes e apresentação: sons, partículas, mapas,
   placas, vínculos de entidades e certos metadados e tipos de menu continuam
   sem paridade comprovada. Servidores com plugins podem exigir extensões ainda
@@ -101,6 +114,7 @@ cargo test -p horizon-protocol --locked --lib --test legacy18 \
   --test legacy17_limits
 cargo test -p horizon-world --locked --lib nbt::tests
 cargo check -p horizon-client --bin horizon-client --no-default-features --locked
+cargo run -p horizon-client --example legacy17_local_probe --no-default-features --locked -- .local/session17-new-run
 python3 tools/test_legacy17_server.py --version 1.7.2
 python3 tools/test_legacy17_server.py --version 1.7.10
 ```
