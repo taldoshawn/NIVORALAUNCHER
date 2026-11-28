@@ -791,8 +791,8 @@ impl Options {
         {
             return Err(
                 concat!(
-                    "Minecraft 1.7 currently supports multiplayer only; ",
-                    "a historical singleplayer engine is not implemented"
+                    "Minecraft 1.7 arbitrary local worlds, benchmarks and dedicated hosting are unavailable; ",
+                    "open the restricted creative-flat preview from the main menu"
                 )
                 .into(),
             );
@@ -11578,6 +11578,7 @@ impl Game<'_> {
                 self.clipboard.set(&text);
             }
             Action::ClassicFlat189 => self.open_classic_flat_189()?,
+            Action::ClassicFlat17 => self.open_classic_flat_17()?,
             Action::Play { folder } => self.open_world(&folder, None, None, false, None)?,
             Action::Create {
                 folder,
@@ -11612,8 +11613,8 @@ impl Game<'_> {
         if self.options.legacy17.is_some() {
             return Err(
                 concat!(
-                    "Singleplayer 1.7 ainda não implementado; ",
-                    "este perfil aceita somente servidores 1.7"
+                    "Mundos gerais 1.7 ainda indisponíveis; ",
+                    "abra o criativo plano restrito pelo menu principal"
                 )
                 .into(),
             );
@@ -15819,6 +15820,15 @@ impl Game<'_> {
                 Screen::Playing => {
                     // key.inventory while riding a tamed mount opens its inventory.
                     if !self.open_ridden_mount_menu() {
+                        if self.remote.as_ref().is_some_and(|r| r.local_flat17) {
+                            self.titles.set_overlay(
+                                horizon_client::text::Text::literal(
+                                    "Paleta fixa: selecione um dos nove blocos da barra.",
+                                ),
+                                false,
+                            );
+                            return Ok(());
+                        }
                         if self.tutorial.open_inventory() {
                             self.persist_tutorial_step();
                         }
@@ -19132,6 +19142,7 @@ enum LoaderMsg {
 
 enum PendingWorldEntry {
     ClassicFlat189,
+    ClassicFlat17,
     Local {
         folder: String,
         name: Option<String>,
@@ -19229,6 +19240,7 @@ impl Game<'_> {
         }
         match self.pending_entry.take() {
             Some(PendingWorldEntry::ClassicFlat189) => self.open_classic_flat_189()?,
+            Some(PendingWorldEntry::ClassicFlat17) => self.open_classic_flat_17()?,
             Some(PendingWorldEntry::Local {
                 folder,
                 name,

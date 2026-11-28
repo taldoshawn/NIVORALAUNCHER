@@ -20,7 +20,11 @@ pub(super) fn relight(columns: &mut [Column]) {
                     let local = y * 256 + z * 16 + x;
                     let i = y * PLANE + (cz + z) * SIDE + cx + x;
                     pass[i] = matches!(column.blocks[local], 0 | 20);
-                    if pass[i] && y as i32 >= column.heights[z * 16 + x] {
+                    // Historical heightmap regeneration can leave the top
+                    // layer of the highest section below its scan ceiling.
+                    // Vanilla seeds full sky above that height even for an
+                    // opaque block there; opacity gates propagation instead.
+                    if y as i32 >= column.heights[z * 16 + x] {
                         sky[i] = 15;
                         queue.push_back(i);
                     }

@@ -45,7 +45,7 @@ impl Launcher {
         let (title, help, choices) = match kind {
             Kind::GameVersion => (
                 "Selecionar versão",
-                "1.7.10 oferece multiplayer experimental. Singleplayer 1.7 ainda indisponível. As opções existentes de 1.8.9 e 26.3 continuam disponíveis.",
+                "1.7.2 e 1.7.10: multiplayer e criativo plano experimentais, com nove blocos fixos. Sobrevivência e geração normal ainda indisponíveis.",
                 vec![
                     (
                         "26.3".into(),
@@ -61,9 +61,15 @@ impl Launcher {
                     ),
                     (
                         "1.7.10".into(),
-                        "Multiplayer nativo experimental • sem singleplayer 1.7".into(),
-                        Action::ChooseLegacy17,
-                        c.legacy17,
+                        "Criativo plano restrito • multiplayer experimental".into(),
+                        Action::ChooseLegacy17(false),
+                        c.legacy17 && !c.legacy17_protocol4,
+                    ),
+                    (
+                        "1.7.2".into(),
+                        "Criativo plano restrito • multiplayer experimental".into(),
+                        Action::ChooseLegacy17(true),
+                        c.legacy17 && c.legacy17_protocol4,
                     ),
                 ],
             ),

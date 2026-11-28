@@ -426,6 +426,8 @@ enum OwnProfile {
 
 pub(super) struct Remote {
     pub session: Session,
+    /// Restricted native 1.7 preview, never inferred from a remote hostname.
+    pub local_flat17: bool,
     pub brand: String,
     /// The server announced it runs mods' quiet commands.
     pub quiet_commands: bool,
@@ -771,10 +773,35 @@ impl Game<'_> {
         }
         Ok(())
     }
+    pub(super) fn open_classic_flat_17(&mut self) -> Result<()> {
+        let Some(version) = self.options.legacy17 else {
+            return Err("Select Minecraft 1.7 before opening its creative-flat preview".into());
+        };
+        if self.defer_world_entry(super::PendingWorldEntry::ClassicFlat17)? {
+            return Ok(());
+        }
+        self.join_world_rest()?;
+        let label = if version.protocol() == 4 {
+            "1.7.2"
+        } else {
+            "1.7.10"
+        };
+        let directory = std::env::current_dir()?
+            .join("legacy-worlds")
+            .join(label)
+            .join("classic-flat");
+        let result = (|| {
+            let pipe = horizon_protocol::legacy17::local_flat::open(directory, version)?;
+            self.join_server(
+                "classic-flat-17", &self.options.player_name(), Some(pipe), None, false,
+            )
+        })();
+        self.show_connection_error(result)
+    }
     pub(super) fn open_classic_flat_189(&mut self) -> Result<()> {
         if self.options.legacy17.is_some() {
             return self.show_connection_error(Err(
-                "Singleplayer 1.7 ainda não implementado. Selecione Multiplayer.".into(),
+                "Selecione o criativo plano 1.7 pelo menu principal.".into(),
             ));
         }
         if self.defer_world_entry(super::PendingWorldEntry::ClassicFlat189)? {
@@ -838,7 +865,15 @@ impl Game<'_> {
             |a| (a.name.clone(), a.uuid),
         );
         self.server_packs_connect(local.is_none().then_some(address), user);
+        let local_flat17 = local.is_some() && address == "classic-flat-17";
         let session = match local {
+            Some(pipe) if address == "classic-flat-17" => {
+                let version = self.options.legacy17
+                    .ok_or("Missing local 1.7 protocol selection")?;
+                Session::connect_local_legacy17(
+                    version, pipe, name, info.clone(), lang.clone(), root.clone(),
+                )
+            }
             Some(pipe) if address == "classic-flat-189" => {
                 Session::connect_local_legacy(pipe, name, info.clone(), lang.clone(), root.clone())
             }
@@ -984,6 +1019,7 @@ impl Game<'_> {
                 };
             });
         self.remote = Some(Remote {
+            local_flat17,
             session,
             brand: "unknown".into(),
             quiet_commands: false,

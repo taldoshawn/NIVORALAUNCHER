@@ -140,6 +140,7 @@ fn historical_highest_section_top_layer_is_not_a_modern_heightmap() {
         let c = w.column(pos(x, y, 0).chunk()).unwrap();
         assert_eq!(c.height(0, 0), Some(4));
         assert_eq!(c.block(pos(x, y, 0)).unwrap(), 1);
+        assert_eq!(c.skylight(pos(x, y, 0)).unwrap(), 15);
         assert_eq!(c.skylight(pos(x, y - 1, 0)).unwrap(), 15);
     }
     w.edit(&[(pos(0, 30, 0), 1, 0)]).unwrap();

@@ -506,7 +506,11 @@ impl Launcher {
                 self.launching = true;
                 self.error = None;
                 self.catalog.status = if self.catalog.config.legacy17 {
-                    "Abrindo multiplayer Minecraft 1.7.10 experimental…"
+                    if self.catalog.config.legacy17_protocol4 {
+                        "Abrindo Minecraft 1.7.2 experimental…"
+                    } else {
+                        "Abrindo Minecraft 1.7.10 experimental…"
+                    }
                 } else if self.catalog.config.legacy18 {
                     "Abrindo Minecraft 1.8.9 experimental…"
                 } else {
@@ -658,7 +662,11 @@ impl Launcher {
             self.controller_edges = Default::default();
             self.controller_repeat = None;
             if self.catalog.config.legacy17 {
-                extra_arguments.push("--protocol-5".into());
+                extra_arguments.push(if self.catalog.config.legacy17_protocol4 {
+                    "--protocol-4".into()
+                } else {
+                    "--protocol-5".into()
+                });
             } else if self.catalog.config.legacy18 {
                 extra_arguments.push("--protocol-47".into());
             }

@@ -1,5 +1,64 @@
 # Validação do transporte nativo 1.7
 
+## Retomada do motor local — 28 de novembro de 2026
+
+O menu principal agora encaminha **Criativo plano 1.7.2/1.7.10** ao servidor
+nativo da versão escolhida por `Session::connect_local_legacy17`. O fluxo de
+carregamento em segundo plano preserva essa entrada. Mundos gerais, quick play
+local, benchmark e servidor dedicado continuam bloqueados para essa seleção.
+O Android oferece ambas as versões, preservando os perfis antigos como 1.7.10.
+Esse caminho é um experimento restrito, sem conclusão do motor histórico.
+
+Verificações novas sobre a fonte desta retomada:
+
+| Verificação | Resultado |
+| --- | --- |
+| Protocolos: biblioteca, integração 1.8 e testes 1.7 de login/chunks/limites/apresentação/servidor local | 242 testes passaram |
+| Núcleo de mundo plano 1.7 | Cinco testes passaram |
+| Probe pela API pública real do cliente | 1.7.2 e 1.7.10 passaram: ação do menu, login em memória, chunks normalizados, inventário, colocação, movimento, keepalive, save e reabertura, posição/rotação/slot e quebra |
+| `cargo check -p horizon-client --bin horizon-client --no-default-features --locked` | Passou |
+| `cargo check -p horizon-android --target aarch64-linux-android --no-default-features --locked -j2` | Passou, NDK r28c/API 28 |
+
+Reproduzir o probe com uma pasta descartável que ainda não exista:
+
+```sh
+cargo run -p horizon-client --example legacy17_local_probe \
+  --no-default-features --locked -- .local/session17-new-run
+cargo test -p horizon-world --test legacy17_flat --locked
+python3 tools/test_legacy17_flat.py --keep-work
+```
+
+O oracle de mundo agora usa `save-all flush`: a confirmação de `save-all`
+normal não garante que os arquivos de região já foram gravados pela fila de IO
+histórica. A comparação registra divergências, continua as etapas seguintes e
+exige correspondência em todas elas para sair com sucesso.
+
+| Etapa do oracle | 1.7.2 | 1.7.10 |
+| --- | --- | --- |
+| Geração plana | Passou | Passou |
+| Edição | Falhou: luz do céu | Falhou: luz do céu |
+| Servidor original reabrindo o save Rust editado | Passou | Passou |
+| Remoção dos blocos | Passou | Passou |
+
+Cada etapa compara nove colunas, 589.824 posições e 1.179.648 valores de luz,
+além de metadados, alturas e biomas. Nesta execução a etapa de edição apresentou
+35 valores divergentes na coluna abaixo do bloco em `(-5, 40, 4)`: Rust 14,
+referência 15 ou 0 conforme a seção. Esperar cinco segundos em vez de 1,1 não
+eliminou a diferença. Isso mantém o gate de paridade de edição **reprovado**;
+não se atribui paridade completa ao experimento.
+
+O caso do topo da seção foi corrigido separadamente: a inicialização da luz
+precisa respeitar o heightmap histórico inclusive quando um bloco opaco no
+topo foi omitido por sua varredura. Foi consultado `aoj.b()` (regeneração de
+heightmap/luz do `Chunk`) do servidor original 1.7.2; os arquivos de referência
+ficaram em `.local/`, sem incorporar Java ou recursos originais à árvore pública.
+
+`pr_ready.py --base origin/codex/rust-1-7-native --quick` continua reprovado:
+colisão dos módulos Python `test_basic_feature_parity`, formatação anterior,
+`as_chunks` acima do MSRV declarado de `horizon-core` e ALSA ausente no host.
+Os testes direcionados acima não substituem aprovação da suíte geral.
+Não houve teste gráfico em aparelho físico nem geração/publicação de APK.
+
 O teste `tools/test_legacy17_server.py` conecta um probe Rust a um servidor
 vanilla descartável, restrito a `127.0.0.1`. O servidor Java é uma referência de
 desenvolvimento. Ele não integra o launcher, o APK nem um backend de jogo.
